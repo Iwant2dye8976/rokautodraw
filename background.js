@@ -82,9 +82,9 @@ chrome.webRequest.onSendHeaders.addListener(
         );
 
         let mall = detectMallFromUrl(details.url);
-
+        let [tab] = [];
         if (!mall) {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (tab?.url?.includes("plutomall.com")) {
                 mall = "plutomall";
             } else if (tab?.url?.includes("store.lilith.com")) {
@@ -114,7 +114,9 @@ chrome.webRequest.onSendHeaders.addListener(
                     console.log(`[LilithDraw][${mall}] appUid: ${appUid}, appId: ${appId}`);
                     try {
                         // const { status } = await chrome.storage.local.get("status");
-                        await chrome.action.openPopup();
+                        if (tab?.url?.includes("plutomall.com") || tab?.url?.includes("store.lilith.com")) {
+                            await chrome.action.openPopup();
+                        }
                     } catch (e) {
                         console.warn("[LilithDraw] Could not open popup:", e.message);
                     }
