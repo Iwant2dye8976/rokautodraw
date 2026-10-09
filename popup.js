@@ -5,6 +5,10 @@ const logWrap = document.getElementById("logWrap");
 const tokenBox = document.getElementById("tokenBox");
 const charList = document.getElementById("charList");
 const totalDrawsEl = document.getElementById("drawsRemaining");
+const autoReloginCheckbox = document.getElementById("autoReloginEnabled");
+const autoReloginSettings = document.getElementById("autoReloginSettings");
+const autoReloginDisclosure = document.getElementById("autoReloginDisclosure");
+const loginSettingsStatus = document.getElementById("loginSettingsStatus");
 
 const MALL_PATTERNS = {
     plutomall: ["plutomall.com"],
@@ -32,15 +36,33 @@ function showLog() {
 }
 
 function setCharsLoading() {
-    charList.innerHTML = `<div class="char-row"><span class="draw-badge draw-loading">Loading...</span></div>`;
+    charList.replaceChildren();
+    const row = document.createElement("div");
+    row.className = "char-row";
+    const badge = document.createElement("span");
+    badge.className = "draw-badge draw-loading";
+    badge.textContent = "Loading...";
+    row.appendChild(badge);
+    charList.appendChild(row);
 }
 
 function setCharsEmpty(msg = "Chưa có token") {
-    charList.innerHTML = `<div class="char-row"><span class="badge badge-warn">${msg}</span></div>`;
+    setCharsMessage(msg, "badge badge-warn");
 }
 
 function setCharsError(msg) {
-    charList.innerHTML = `<div class="char-row"><span class="badge badge-error">${msg}</span></div>`;
+    setCharsMessage(msg, "badge badge-error");
+}
+
+function setCharsMessage(message, className) {
+    charList.replaceChildren();
+    const row = document.createElement("div");
+    row.className = "char-row";
+    const badge = document.createElement("span");
+    badge.className = className;
+    badge.textContent = message;
+    row.appendChild(badge);
+    charList.appendChild(row);
 }
 
 function showMain() {
@@ -55,7 +77,7 @@ function syncRadio(mall) {
 }
 
 function getSelectedMall() {
-    return document.querySelector('input[name="store"]:checked').value;
+    return document.querySelector('input[name="store"]:checked')?.value || "plutomall";
 }
 
 async function detectMall() {
@@ -77,17 +99,30 @@ async function detectMall() {
 }
 
 function renderChars(roles) {
-    charList.innerHTML = "";
+    charList.replaceChildren();
     for (const role of roles) {
         const div = document.createElement("div");
         div.className = "char-row";
-        div.innerHTML = `
-            <span class="char-avatar"><img src="${role.avatar}"></span>
-            <span class="char-name">
-                <span id="${role.roleId}" class="char-history">${role.name}</span>
-            </span>
-            <span>#${role.svrId}</span>
-        `;
+        const avatarWrap = document.createElement("span");
+        avatarWrap.className = "char-avatar";
+        const avatar = document.createElement("img");
+        avatar.alt = "";
+        const showFallback = () => showAvatarFallback(avatar, avatarWrap, role.name);
+        avatar.addEventListener("error", showFallback);
+        avatarWrap.appendChild(avatar);
+        if (!setImageSource(avatar, role.avatar)) showFallback();
+
+        const nameWrap = document.createElement("span");
+        nameWrap.className = "char-name";
+        const name = document.createElement("span");
+        name.className = "char-history";
+        name.dataset.roleId = String(role.roleId ?? "");
+        name.textContent = String(role.name ?? "Không rõ tên");
+        nameWrap.appendChild(name);
+
+        const server = document.createElement("span");
+        server.textContent = `#${role.svrId ?? "?"}`;
+        div.append(avatarWrap, nameWrap, server);
         charList.appendChild(div);
     }
     attachHistoryListeners();
@@ -108,26 +143,37 @@ async function renderCache(mall) {
             });
         });
 
-        if (!res.hasToken) {
+        if (res?.error) throw new Error(res.error);
+        if (!res?.hasToken) {
             setStatus("Chưa có dữ liệu, hãy Capture Token");
             setCharsEmpty("Chưa có dữ liệu, hãy Capture Token");
             tokenBox.value = "";
             totalDrawsEl.textContent = "— lượt còn lại";
+            logWrap.style.display = "none";
+            logEl.textContent = "";
             return;
         }
 
-        setStatus("Token OK", true);
+        setStatus(
+            res.isValidToken === false ? "Token không hợp lệ" :
+                res.isValidToken === true ? "Token OK" : "Token đã lưu",
+            res.isValidToken === true
+        );
 
         const { [`${mall}_token`]: token } = await chrome.storage.local.get(`${mall}_token`);
         if (token) tokenBox.value = token;
 
         renderDrawsLeft(res.drawsLeft, res.lastCheck);
 
-        const { drawLog } = await chrome.storage.local.get("drawLog");
+        const { [`${mall}_drawLog`]: drawLog } =
+            await chrome.storage.local.get(`${mall}_drawLog`);
         if (drawLog?.length) {
             showLog();
             logEl.textContent = drawLog.join("\n");
             logEl.scrollTop = logEl.scrollHeight;
+        } else {
+            logWrap.style.display = "none";
+            logEl.textContent = "";
         }
 
         if (res.roles?.length > 0) {
@@ -137,7 +183,8 @@ async function renderCache(mall) {
         }
     } catch (err) {
         console.error("renderCache error:", err);
-        setCharsError("Lỗi đọc cache");
+        setStatus(`Lỗi đọc dữ liệu: ${err.message}`);
+        setCharsError(err.message);
     }
 }
 
@@ -151,6 +198,10 @@ async function fetchAndRender(mall) {
                 setCharsError("Lỗi kết nối extension");
                 return reject(new Error(chrome.runtime.lastError.message));
             }
+            if (!res) {
+                setCharsError("Extension không trả về dữ liệu");
+                return reject(new Error("Extension không trả về dữ liệu"));
+            }
             if (res?.error) {
                 setStatus(res.error, false);
                 setCharsError(res.error);
@@ -158,12 +209,16 @@ async function fetchAndRender(mall) {
             }
 
             chrome.storage.local.get(`${m}_token`, (data) => {
+                if (chrome.runtime.lastError) {
+                    setStatus(chrome.runtime.lastError.message);
+                    return;
+                }
                 const token = data[`${m}_token`];
-                if (token) tokenBox.value = token;
+                tokenBox.value = token || "";
             });
 
             setStatus(res.isValidToken ? "Token OK" : "Token không hợp lệ", !!res.isValidToken);
-            renderDrawsLeft(res.totalDrawsLeft, null);
+            renderDrawsLeft(res.totalDrawsLeft, res.lastCheck);
 
             const roles = Array.isArray(res.roles) ? res.roles : [];
             if (roles.length > 0) {
@@ -179,10 +234,20 @@ async function fetchAndRender(mall) {
 
 function attachHistoryListeners() {
     for (const el of document.querySelectorAll(".char-history")) {
-        el.addEventListener("click", async () => {
+        el.addEventListener("click", () => {
+            const mall = getSelectedMall();
             showHistoryLoading(el.textContent);
-            chrome.runtime.sendMessage({ action: "getDrawHistory", roleId: el.id }, (res) => {
-                if (res?.error) { showHistoryError(res.error); return; }
+            chrome.runtime.sendMessage(
+                { action: "getDrawHistory", roleId: el.dataset.roleId, mall },
+                (res) => {
+                if (chrome.runtime.lastError) {
+                    showHistoryError(chrome.runtime.lastError.message);
+                    return;
+                }
+                if (res?.error || !res?.character || !res?.history) {
+                    showHistoryError(res?.error || "Phản hồi lịch sử không hợp lệ");
+                    return;
+                }
                 showHistory(res.character, res.history);
             });
         });
@@ -194,20 +259,6 @@ function showHistory(character, history) {
     const existing = document.getElementById("detailView");
     if (existing) existing.remove();
 
-    const historyRows = history.data?.list?.map((h, i) => {
-        const reward = h.rewardName ?? "—";
-        const date = h.timestamp
-            ? new Date(h.timestamp * 1000).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })
-            : "";
-        return `
-          <div class="history-row">
-            <span class="h-idx">${i + 1}</span>
-            <img class="reward-img" src="images/rewards/${h.rewardId}.png" onerror="this.style.display='none'">
-            <span class="h-reward">${reward} x${h.num || 1}</span>
-            ${date ? `<span class="h-time">${date}</span>` : ""}
-          </div>`;
-    }).join("") ?? "";
-
     const div = document.createElement("div");
     div.id = "detailView";
     div.innerHTML = `
@@ -218,21 +269,109 @@ function showHistory(character, history) {
     <div class="content">
       <div class="char-hero-card glass">
         <div class="char-hero-inner">
-          <img class="hero-avatar" src="${character.avatar}" onerror="this.style.display='none'">
+          <span class="hero-avatar-wrap"><img class="hero-avatar" alt=""></span>
           <div>
-            <div class="hero-name">${character.name}</div>
-            <div class="hero-svr">Server #${character.svrId}</div>
+            <div class="hero-name"></div>
+            <div class="hero-svr"></div>
           </div>
         </div>
       </div>
       <div class="history-card glass">
         <div class="history-card-head">Phần thưởng đã nhận</div>
-        <div class="history-list">${historyRows}</div>
+        <div class="history-list"></div>
       </div>
     </div>`;
 
+    const avatarWrap = div.querySelector(".hero-avatar-wrap");
+    const avatar = div.querySelector(".hero-avatar");
+    const showFallback = () => showAvatarFallback(avatar, avatarWrap, character?.name);
+    avatar.addEventListener("error", showFallback);
+    if (!setImageSource(avatar, character?.avatar)) showFallback();
+    div.querySelector(".hero-name").textContent = String(character?.name ?? "Không rõ tên");
+    div.querySelector(".hero-svr").textContent = `Server #${character?.svrId ?? "?"}`;
+
+    const historyList = div.querySelector(".history-list");
+    const entries = Array.isArray(history?.data?.list) ? history.data.list : [];
+    if (entries.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "history-empty";
+        empty.textContent = "Chưa có lịch sử quay";
+        historyList.appendChild(empty);
+    }
+    entries.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "history-row";
+        const number = document.createElement("span");
+        number.className = "h-idx";
+        number.textContent = String(index + 1);
+
+        const image = document.createElement("img");
+        image.className = "reward-img";
+        image.alt = "";
+        if (/^\d+$/.test(String(item.rewardId ?? ""))) {
+            image.src = `images/rewards/${item.rewardId}.png`;
+        } else {
+            image.style.display = "none";
+        }
+        image.addEventListener("error", () => { image.style.display = "none"; });
+
+        const reward = document.createElement("span");
+        reward.className = "h-reward";
+        reward.textContent = `${item.rewardName ?? "—"} x${item.num || 1}`;
+        row.append(number, image, reward);
+
+        const timestamp = Number(item.timestamp);
+        if (Number.isFinite(timestamp) && timestamp > 0) {
+            const date = document.createElement("span");
+            date.className = "h-time";
+            date.textContent = new Date(timestamp * 1000).toLocaleString(
+                "vi-VN",
+                { dateStyle: "short", timeStyle: "short" }
+            );
+            row.appendChild(date);
+        }
+        historyList.appendChild(row);
+    });
+
     document.getElementById("main").parentNode.insertBefore(div, document.getElementById("main").nextSibling);
     document.getElementById("backBtn").addEventListener("click", showMain);
+}
+
+function setImageSource(image, source) {
+    if (typeof source !== "string") return false;
+    try {
+        const value = source.trim();
+        if (!value) return false;
+        if (/^data:image\/(?:png|jpe?g|gif|webp|avif);/i.test(value)) {
+            image.src = value;
+            return true;
+        }
+        const normalized = value.startsWith("//") ? `https:${value}` : value;
+        const url = new URL(normalized);
+        if (url.protocol === "https:" || url.protocol === "http:") {
+            image.src = url.href;
+            return true;
+        }
+    } catch {
+        return false;
+    }
+    return false;
+}
+
+function showAvatarFallback(image, container, name) {
+    image.remove();
+    container.classList.add("avatar-fallback");
+    container.textContent = getInitials(name);
+}
+
+function getInitials(name) {
+    return String(name ?? "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0].toLocaleUpperCase())
+        .join("") || "?";
 }
 
 function showHistoryLoading(name) {
@@ -250,7 +389,7 @@ function showHistoryLoading(name) {
     <div class="content">
       <div class="char-hero-card glass">
         <div class="char-hero-inner">
-          <div class="hero-name">${name}</div>
+          <div class="hero-name"></div>
         </div>
       </div>
       <div class="history-card glass">
@@ -261,30 +400,19 @@ function showHistoryLoading(name) {
       </div>
     </div>`;
 
+    div.querySelector(".hero-name").textContent = name;
     document.getElementById("main").parentNode.insertBefore(div, document.getElementById("main").nextSibling);
     document.getElementById("backBtn").addEventListener("click", showMain);
 }
 
 function showHistoryError(message) {
     const list = document.querySelector("#detailView .history-list");
-    if (list) list.innerHTML = `<div class="history-empty history-err">Error: ${message}</div>`;
-}
-
-function waitForToken(timeoutMs = 20000) {
-    return new Promise((resolve, reject) => {
-        const start = Date.now();
-        const interval = setInterval(async () => {
-            const { tokenTimestamp } = await chrome.storage.local.get("tokenTimestamp");
-            if (tokenTimestamp && tokenTimestamp > start) {
-                clearInterval(interval);
-                resolve();
-            }
-            if (Date.now() - start > timeoutMs) {
-                clearInterval(interval);
-                reject(new Error("Timeout — không capture được token"));
-            }
-        }, 500);
-    });
+    if (!list) return;
+    list.replaceChildren();
+    const error = document.createElement("div");
+    error.className = "history-empty history-err";
+    error.textContent = `Lỗi: ${message}`;
+    list.appendChild(error);
 }
 
 for (const radio of document.querySelectorAll('input[name="store"]')) {
@@ -295,50 +423,207 @@ for (const radio of document.querySelectorAll('input[name="store"]')) {
     });
 }
 
-document.getElementById("captureBtn").addEventListener("click", async () => {
-    const mall = getSelectedMall();
-    const targetUrl = MALL_URLS[mall];
-    const pattern = MALL_TAB_PATTERNS[mall];
-    const [tab] = await chrome.tabs.query({ url: pattern });
+function setLoginSettingsStatus(message) {
+    loginSettingsStatus.textContent = message;
+}
 
-    const onTokenCaptured = () => {
-        waitForToken()
-            .then(() => fetchAndRender(mall))
-            .catch((err) => setStatus(err.message));
-    };
+function setAutoReloginExpanded(expanded) {
+    autoReloginSettings.hidden = !expanded;
+    autoReloginDisclosure.setAttribute("aria-expanded", String(expanded));
+    autoReloginDisclosure.setAttribute(
+        "aria-label",
+        `${expanded ? "Thu nhỏ" : "Mở rộng"} cài đặt Auto đăng nhập lại`
+    );
+}
 
-    if (!tab) {
-        chrome.tabs.create({ url: targetUrl, active: true }, (newTab) => {
-            chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-                if (tabId === newTab.id && info.status === "complete") {
-                    chrome.tabs.onUpdated.removeListener(listener);
-                    onTokenCaptured();
+function selectLoginTab(mall) {
+    for (const button of document.querySelectorAll("[data-login-tab]")) {
+        const selected = button.dataset.loginTab === mall;
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-selected", String(selected));
+        document.getElementById(button.getAttribute("aria-controls")).hidden = !selected;
+    }
+}
+
+selectLoginTab("plutomall");
+
+async function loadSavedLoginCredentials() {
+    const credentials = await chrome.storage.local.get([
+        "lilithstoreUsername",
+        "lilithstorePassword",
+        "plutomallUsername",
+        "plutomallPassword",
+    ]);
+    document.getElementById("lilithUsername").value = credentials.lilithstoreUsername || "";
+    document.getElementById("lilithPassword").value = credentials.lilithstorePassword || "";
+    document.getElementById("plutoUsername").value = credentials.plutomallUsername || "";
+    document.getElementById("plutoPassword").value = credentials.plutomallPassword || "";
+    return credentials;
+}
+
+for (const button of document.querySelectorAll("[data-login-tab]")) {
+    button.addEventListener("click", () => selectLoginTab(button.dataset.loginTab));
+}
+
+autoReloginDisclosure.addEventListener("click", () => {
+    setAutoReloginExpanded(autoReloginSettings.hidden);
+});
+
+autoReloginCheckbox.addEventListener("change", async () => {
+    setAutoReloginExpanded(autoReloginCheckbox.checked);
+    try {
+        const credentials = await loadSavedLoginCredentials();
+        await chrome.storage.local.set({ autoReloginEnabled: autoReloginCheckbox.checked });
+        if (!autoReloginCheckbox.checked) {
+            setLoginSettingsStatus("Đã tắt tự đăng nhập. Thông tin đã lưu được giữ nguyên.");
+        } else {
+            const mall = document.querySelector(".login-tab.active")?.dataset.loginTab || "lilithstore";
+            const hasCredentials = Boolean(
+                credentials[`${mall}Username`] && credentials[`${mall}Password`]
+            );
+            const storeName = mall === "lilithstore" ? "Lilith Store" : "Plutomall";
+            setLoginSettingsStatus(
+                hasCredentials
+                    ? `Đã bật tự đăng nhập ${storeName} bằng thông tin đã lưu.`
+                    : `Chưa có thông tin ${storeName} đã lưu. Nhập tài khoản, mật khẩu rồi bấm Lưu thông tin.`
+            );
+        }
+    } catch (error) {
+        autoReloginCheckbox.checked = !autoReloginCheckbox.checked;
+        setAutoReloginExpanded(autoReloginCheckbox.checked);
+        setLoginSettingsStatus(`Không thể cập nhật cài đặt: ${error.message}`);
+    }
+});
+
+document.getElementById("saveLoginBtn").addEventListener("click", async () => {
+    const lilithUsername = document.getElementById("lilithUsername").value.trim();
+    const lilithPassword = document.getElementById("lilithPassword").value;
+    try {
+        await chrome.storage.local.set({
+            autoReloginEnabled: autoReloginCheckbox.checked,
+            lilithstoreUsername: lilithUsername,
+            lilithstorePassword: lilithPassword,
+            plutomallUsername: document.getElementById("plutoUsername").value.trim(),
+            plutomallPassword: document.getElementById("plutoPassword").value,
+        });
+        setLoginSettingsStatus(
+            autoReloginCheckbox.checked
+                ? "Đã lưu. Tự đăng nhập sẽ dùng thông tin riêng của từng cửa hàng khi token hết hạn."
+                : "Đã lưu thông tin."
+        );
+    } catch (error) {
+        setLoginSettingsStatus(`Không thể lưu: ${error.message}`);
+    }
+});
+
+document.getElementById("clearLoginBtn").addEventListener("click", async () => {
+    try {
+        autoReloginCheckbox.checked = false;
+        setAutoReloginExpanded(false);
+        await chrome.storage.local.set({ autoReloginEnabled: false });
+        await chrome.storage.local.remove([
+            "lilithstoreUsername",
+            "lilithstorePassword",
+            "plutomallUsername",
+            "plutomallPassword",
+        ]);
+        await loadSavedLoginCredentials();
+        setLoginSettingsStatus("Đã xóa toàn bộ thông tin đăng nhập đã lưu.");
+    } catch (error) {
+        try {
+            const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
+            autoReloginCheckbox.checked = autoReloginEnabled === true;
+            setAutoReloginExpanded(autoReloginCheckbox.checked);
+        } catch (stateError) {
+            console.error("Could not restore auto-relogin setting:", stateError);
+        }
+        setLoginSettingsStatus(`Không thể xóa thông tin: ${error.message}`);
+    }
+});
+
+function testRelogin(mall) {
+    const storeName = mall === "lilithstore" ? "Lilith Store" : "Plutomall";
+    setLoginSettingsStatus(`Đang kiểm tra và mở tab đăng nhập ${storeName}…`);
+    chrome.runtime.sendMessage({ action: "testRelogin", mall }, response => {
+        if (chrome.runtime.lastError) {
+            setLoginSettingsStatus(`Không gửi được yêu cầu: ${chrome.runtime.lastError.message}`);
+        } else if (response?.error) {
+            setLoginSettingsStatus(`Kiểm tra thất bại: ${response.error}`);
+        } else if (response?.ok) {
+            setLoginSettingsStatus(`Đã mở tab nền ${storeName}. Theo dõi trạng thái để kiểm tra flow đăng nhập.`);
+        } else {
+            chrome.storage.local.get("autoReloginStatus", state => {
+                if (chrome.runtime.lastError) {
+                    setLoginSettingsStatus(`Không thể khởi chạy đăng nhập: ${chrome.runtime.lastError.message}`);
+                } else {
+                    setLoginSettingsStatus(
+                        state.autoReloginStatus ||
+                        "Không thể khởi chạy đăng nhập. Kiểm tra cài đặt và thông tin tài khoản."
+                    );
                 }
             });
-        });
-        return;
-    }
-    chrome.tabs.update(tab.id, { active: true, url: targetUrl });
-    chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-        if (tabId === tab.id && info.status === "complete") {
-            chrome.tabs.onUpdated.removeListener(listener);
-            onTokenCaptured();
         }
     });
+}
+
+document.getElementById("testLilithReloginBtn").addEventListener("click", () => {
+    testRelogin("lilithstore");
+});
+
+document.getElementById("testPlutoReloginBtn").addEventListener("click", () => {
+    testRelogin("plutomall");
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+    if (changes.autoReloginStatus?.newValue) {
+        setLoginSettingsStatus(changes.autoReloginStatus.newValue);
+    }
+    const mall = getSelectedMall();
+    if (
+        changes[`${mall}_token`] ||
+        changes[`${mall}_roles`] ||
+        changes[`${mall}_drawsLeft`] ||
+        changes[`${mall}_lastCheck`]
+    ) {
+        renderCache(mall);
+    }
+});
+
+document.getElementById("captureBtn").addEventListener("click", async () => {
+    const mall = getSelectedMall();
+    try {
+        const [tab] = await chrome.tabs.query({ url: MALL_TAB_PATTERNS[mall] });
+        if (tab?.id !== undefined) {
+            await chrome.tabs.update(tab.id, { active: true, url: MALL_URLS[mall] });
+        } else {
+            await chrome.tabs.create({ url: MALL_URLS[mall], active: true });
+        }
+        setStatus("Đã mở cửa hàng; token sẽ được lưu tự động");
+    } catch (error) {
+        setStatus(`Không thể mở cửa hàng: ${error.message}`);
+    }
 });
 
 document.getElementById("refreshCharsBtn").addEventListener("click", () => {
-    fetchAndRender(getSelectedMall());
+    fetchAndRender(getSelectedMall()).catch(() => {});
 });
 
 document.getElementById("drawNowBtn").addEventListener("click", () => {
+    const mall = getSelectedMall();
     const btn = document.getElementById("drawNowBtn");
     btn.disabled = true;
     btn.textContent = "Đang quay…";
     showLog();
     logEl.textContent = "Bắt đầu quay thưởng...";
 
-    chrome.runtime.sendMessage({ action: "drawNow" }, (res) => {
+    chrome.runtime.sendMessage({ action: "drawNow", mall }, (res) => {
+        if (chrome.runtime.lastError) {
+            setStatus(chrome.runtime.lastError.message);
+            btn.disabled = false;
+            btn.textContent = "✦ Quay thưởng ngay";
+            return;
+        }
         if (res?.error) {
             setStatus(res.error);
             btn.disabled = false;
@@ -346,17 +631,40 @@ document.getElementById("drawNowBtn").addEventListener("click", () => {
             return;
         }
 
+        const pollStartedAt = Date.now();
         const poll = setInterval(async () => {
-            const { drawLog } = await chrome.storage.local.get("drawLog");
+            if (Date.now() - pollStartedAt >= 290000) {
+                clearInterval(poll);
+                setStatus("Lượt quay không phản hồi; hãy làm mới trạng thái trước khi chạy lại");
+                btn.disabled = false;
+                btn.textContent = "✦ Quay thưởng ngay";
+                return;
+            }
+            let data;
+            try {
+                data = await chrome.storage.local.get(`${mall}_drawLog`);
+            } catch (error) {
+                clearInterval(poll);
+                setStatus(`Không đọc được nhật ký: ${error.message}`);
+                btn.disabled = false;
+                btn.textContent = "✦ Quay thưởng ngay";
+                return;
+            }
+            const drawLog = data[`${mall}_drawLog`];
             if (drawLog?.length > 0) {
                 logEl.textContent = drawLog.join("\n");
                 logEl.scrollTop = logEl.scrollHeight;
                 const lastLine = drawLog[drawLog.length - 1];
-                if (lastLine === "Done!" || lastLine.startsWith("Lỗi") || lastLine.includes("Không còn")) {
+                if (
+                    lastLine === "Done!" ||
+                    lastLine.startsWith("Lỗi") ||
+                    lastLine.startsWith("Đã tạm dừng") ||
+                    lastLine.includes("Không còn")
+                ) {
                     clearInterval(poll);
                     btn.disabled = false;
                     btn.textContent = "✦ Quay thưởng ngay";
-                    await fetchAndRender(getSelectedMall());
+                    fetchAndRender(mall).catch(() => {});
                 }
             }
         }, 1000);
@@ -364,6 +672,24 @@ document.getElementById("drawNowBtn").addEventListener("click", () => {
 });
 
 (async () => {
-    const mall = await detectMall();
-    await renderCache(mall);
+    try {
+        const settings = await chrome.storage.local.get([
+            "autoReloginEnabled",
+            "lilithstoreUsername",
+            "lilithstorePassword",
+            "plutomallUsername",
+            "plutomallPassword",
+            "autoReloginStatus",
+        ]);
+        autoReloginCheckbox.checked = settings.autoReloginEnabled === true;
+        setAutoReloginExpanded(autoReloginCheckbox.checked);
+        if (settings.autoReloginStatus) setLoginSettingsStatus(settings.autoReloginStatus);
+        await loadSavedLoginCredentials();
+
+        const mall = await detectMall();
+        await renderCache(mall);
+    } catch (error) {
+        setStatus(`Không thể khởi tạo popup: ${error.message}`);
+        setCharsError(error.message);
+    }
 })();

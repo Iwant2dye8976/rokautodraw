@@ -18,7 +18,10 @@
     "https://*.plutomall.com/*",
     "https://*.plutomall.com.vn/*",
     "https://campaign-global.lilith.com/*",
-    "https://plat-campaign-api.lilithgame.com/*"
+    "https://plat-campaign-api.lilithgame.com/*",
+    "https://q.lilithgame.com/*",
+    "https://passport-global.lilith.com/*",
+    "https://passport.pup.vn/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -44,6 +47,16 @@
       "js": [
         "content.js"
       ]
+    },
+    {
+      "matches": [
+        "https://passport-global.lilith.com/*",
+        "https://passport.pup.vn/*"
+      ],
+      "js": [
+        "relogin.js"
+      ],
+      "run_at": "document_idle"
     }
   ]
 }

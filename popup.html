@@ -1,81 +1,216 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Lilith Auto</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="popup.css">
-  <title>Lilith Auto</title>
-</head>
+  <body>
+    <nav class="g-nav">
+      <span class="g-nav-brand">ROK Weekly Auto</span>
+      <div class="status-pill">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="status">Chưa có token</span>
+      </div>
+    </nav>
+    <div id="main">
+      <div class="card glass">
+        <div class="card-head">
+          <div class="auto-relogin-header">
+            <label class="auto-relogin-toggle" for="autoReloginEnabled">
+              <span class="eyebrow">Auto đăng nhập lại</span>
+              <input id="autoReloginEnabled" type="checkbox" />
+            </label>
+            <button
+              class="auto-relogin-disclosure"
+              id="autoReloginDisclosure"
+              type="button"
+              aria-label="Mở rộng cài đặt Auto đăng nhập lại"
+              aria-expanded="false"
+              aria-controls="autoReloginSettings"
+            >
+              <span class="disclosure-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+          <br>
+        </div>
+        <div class="card-body" id="autoReloginSettings" hidden>
+          <div
+            class="login-tabs"
+            role="tablist"
+            aria-label="Cấu hình đăng nhập cửa hàng"
+          >
+            <button
+              class="login-tab active"
+              id="loginTabPluto"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="loginPanelPluto"
+              data-login-tab="plutomall"
+            >
+              Plutomall
+            </button>
+            <button
+              class="login-tab"
+              id="loginTabLilith"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="loginPanelLilith"
+              data-login-tab="lilithstore"
+            >
+              Lilith Store
+            </button>
+          </div>
+          <section
+            class="login-panel"
+            id="loginPanelLilith"
+            role="tabpanel"
+            aria-labelledby="loginTabLilith"
+            hidden
+          >
+            <label class="login-field">
+              <span>Tài khoản Lilith Store</span>
+              <input
+                id="lilithUsername"
+                type="text"
+                autocomplete="username"
+                spellcheck="false"
+              />
+            </label>
+            <label class="login-field">
+              <span>Mật khẩu Lilith Store</span>
+              <input
+                id="lilithPassword"
+                type="password"
+                autocomplete="current-password"
+              />
+            </label>
+          </section>
+          <section
+            class="login-panel"
+            id="loginPanelPluto"
+            role="tabpanel"
+            aria-labelledby="loginTabPluto"
+          >
+            <label class="login-field">
+              <span>Tài khoản Plutomall</span>
+              <input
+                id="plutoUsername"
+                type="text"
+                autocomplete="username"
+                spellcheck="false"
+              />
+            </label>
+            <label class="login-field">
+              <span>Mật khẩu Plutomall</span>
+              <input
+                id="plutoPassword"
+                type="password"
+                autocomplete="current-password"
+              />
+            </label>
+            <p class="login-note">
+              Tài khoản Plutomall sẽ được dùng riêng khi token Plutomall hết
+              hạn.
+            </p>
+          </section>
+          <p class="login-note">
+            Thông tin đăng nhập được lưu trên thiết bị cho đến khi bạn xóa. Mỗi
+            cửa hàng dùng tài khoản riêng.
+          </p>
+          <div class="btn-row login-actions">
+            <button class="btn-util" id="saveLoginBtn" type="button">
+              Lưu thông tin
+            </button>
+            <button class="btn-util" id="clearLoginBtn" type="button">
+              Xóa thông tin
+            </button>
+          </div>
+          <div class="btn-row">
+            <button class="btn-util" id="testPlutoReloginBtn" type="button">
+              Check Plutomall
+            </button>
+            <button class="btn-util" id="testLilithReloginBtn" type="button">
+              CheckLilith Store
+            </button>
+          </div>
+          <div
+            class="login-settings-status"
+            id="loginSettingsStatus"
+            role="status"
+            aria-live="polite"
+          ></div>
+        </div>
+      </div>
 
-<body>
-  <nav class="g-nav">
-    <span class="g-nav-brand">Lilith Auto</span>
-    <div class="status-pill">
-      <span class="status-dot" id="statusDot"></span>
-      <span id="status">Chưa có token</span>
-    </div>
-  </nav>
-  <div id="main">
-    <div class="card glass">
-      <div class="card-head">
-        <div class="eyebrow-row">
-          <div class="eyebrow">Thao tác</div>
-          <div class="radio-group">
-            <label class="radio-pill">
-              <input type="radio" name="store" value="plutomall" checked>
-              <span>Plutomall</span>
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="store" value="lilithstore">
-              <span>Lilith Store</span>
-            </label>
+      <div class="card glass">
+        <div class="card-head">
+          <div class="eyebrow-row">
+            <div class="eyebrow">Thao tác</div>
+            <div class="radio-group">
+              <label class="radio-pill">
+                <input type="radio" name="store" value="plutomall" checked />
+                <span>Plutomall</span>
+              </label>
+              <label class="radio-pill">
+                <input type="radio" name="store" value="lilithstore" />
+                <span>Lilith Store</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="btn-row">
+            <button class="btn-util" id="captureBtn">🔑 Lấy Token</button>
+            <button class="btn-util" id="refreshCharsBtn">↺ Làm mới</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn-pill" id="drawNowBtn">✦ Quay thưởng ngay</button>
           </div>
         </div>
       </div>
-      <div class="card-body">
-        <div class="btn-row">
-          <button class="btn-util" id="captureBtn">🔑 Lấy Token</button>
-          <button class="btn-util" id="refreshCharsBtn">↺ Làm mới</button>
-        </div>
-        <div class="btn-row">
-          <button class="btn-pill" id="drawNowBtn">✦ Quay thưởng ngay</button>
-        </div>
-      </div>
-    </div>
 
-    <div class="card glass">
-      <div class="card-head">
-        <div class="eyebrow-row">
-          <div class="eyebrow">Nhân vật</div>
-          <span class="draws-remaining" id="drawsRemaining">— lượt còn lại</span>
+      <div class="card glass">
+        <div class="card-head">
+          <div class="eyebrow-row">
+            <div class="eyebrow">Nhân vật</div>
+            <span class="draws-remaining" id="drawsRemaining"
+              >— lượt còn lại</span
+            >
+          </div>
         </div>
-      </div>
-      <div class="card-body">
-        <div class="char-list-inner" id="charList">
-          <div class="char-row">
-            <span class="badge badge-warn">Chưa có token</span>
+        <div class="card-body">
+          <div class="char-list-inner" id="charList">
+            <div class="char-row">
+              <span class="badge badge-warn">Chưa có token</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="card glass">
-      <div class="card-head">
-        <div class="eyebrow">Token</div>
+      <div class="card glass">
+        <div class="card-head">
+          <div class="eyebrow">Token</div>
+        </div>
+        <div class="card-body">
+          <textarea
+            id="tokenBox"
+            readonly
+            placeholder="Token sẽ hiện ở đây sau khi lấy…"
+          ></textarea>
+        </div>
       </div>
-      <div class="card-body">
-        <textarea id="tokenBox" readonly placeholder="Token sẽ hiện ở đây sau khi lấy…"></textarea>
+
+      <div id="logWrap" style="display: none">
+        <div class="eyebrow" style="padding: 0 2px 6px">Nhật ký</div>
+        <div id="log"></div>
       </div>
     </div>
 
-    <div id="logWrap" style="display:none">
-      <div class="eyebrow" style="padding:0 2px 6px">Nhật ký</div>
-      <div id="log"></div>
-    </div>
-  </div>
-
-  <script src="popup.js"></script>
-</body>
-
+    <script src="popup.js"></script>
+  </body>
 </html>
