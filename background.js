@@ -337,27 +337,49 @@ chrome.webRequest.onSendHeaders.addListener(
 );
 
 
-chrome.runtime.onStartup.addListener(async () => {
-    chrome.alarms.get("dailyResetCheck", (alarm) => {
-        if (!alarm) chrome.alarms.create("dailyResetCheck", { periodInMinutes: 60 });
+const DAILY_RESET_ALARM = "dailyResetCheck";
+const DAILY_RESET_PERIOD_MINUTES = 60;
+
+async function ensureDailyResetAlarm() {
+    try {
+        let alarm = await chrome.alarms.get(DAILY_RESET_ALARM);
+        if (alarm && alarm.periodInMinutes === DAILY_RESET_PERIOD_MINUTES) return;
+
+        if (alarm) await chrome.alarms.clear(DAILY_RESET_ALARM);
+        await chrome.alarms.create(DAILY_RESET_ALARM, {
+            periodInMinutes: DAILY_RESET_PERIOD_MINUTES,
+        });
+        alarm = await chrome.alarms.get(DAILY_RESET_ALARM);
+        if (!alarm) throw new Error("Alarm was not present after creation");
+        console.log(
+            `[LilithDraw] Daily reset alarm active: every ${alarm.periodInMinutes} minute(s); next at ${new Date(alarm.scheduledTime).toLocaleString()}`
+        );
+    } catch (error) {
+        console.error("[LilithDraw] Could not ensure daily reset alarm:", error);
+    }
+}
+
+chrome.runtime.onStartup.addListener(() => {
+    void ensureDailyResetAlarm();
+    void autoDrawAllMalls("Khởi động Chrome").catch((error) => {
+        console.error("[LilithDraw] Startup auto draw failed:", error);
     });
-    await autoDrawAllMalls();
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-    chrome.alarms.get("dailyResetCheck", (alarm) => {
-        if (!alarm) {
-            chrome.alarms.create("dailyResetCheck", { periodInMinutes: 60 });
-            console.log("[LilithDraw] Alarm created");
-        }
-    });
+    ensureDailyResetAlarm();
 });
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name === "dailyResetCheck") {
-        await autoDrawAllMalls();
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === DAILY_RESET_ALARM) {
+        console.log("[LilithDraw] Daily reset alarm fired");
+        void autoDrawAllMalls("Alarm định kỳ").catch((error) => {
+            console.error("[LilithDraw] Scheduled auto draw failed:", error);
+        });
     }
 });
+
+ensureDailyResetAlarm();
 
 async function refreshStoreAfterRelogin(mall) {
     const {
@@ -606,24 +628,35 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     })().catch(error => console.error("[LilithDraw] Could not clear relogin data:", error));
 });
 
-async function autoDrawAllMalls() {
+async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
     for (const mall of Object.keys(STORE_CONFIG)) {
         try {
-            await autoDrawMall(mall);
+            await autoDrawMall(mall, trigger);
         } catch (e) {
             console.error(`[LilithDraw][${mall}] Scheduled draw failed:`, e);
         }
     }
 }
 
-async function autoDrawMall(mall) {
+async function autoDrawMall(mall, trigger) {
     if (activeDraws.has(mall)) return;
     activeDraws.add(mall);
     try {
+        const checkedAt = new Date().toLocaleString();
+        await chrome.storage.local.set({
+            [sk(mall, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Đang kiểm tra lượt quay..."],
+        });
         const token = await getToken(mall);
-        if (!token) return;
+        if (!token) {
+            await chrome.storage.local.set({
+                [sk(mall, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Bỏ qua: chưa có token"],
+            });
+            return;
+        }
         const log = await runDraws(token, mall, true);
-        await chrome.storage.local.set({ [sk(mall, "drawLog")]: log });
+        await chrome.storage.local.set({
+            [sk(mall, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...log],
+        });
     } catch (e) {
         console.error(`[LilithDraw][${mall}] autoDrawMall error:`, e);
     } finally {

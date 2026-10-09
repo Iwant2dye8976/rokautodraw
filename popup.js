@@ -35,6 +35,17 @@ function showLog() {
     logEl.classList.add("visible");
 }
 
+function renderDrawLog(drawLog) {
+    if (drawLog?.length) {
+        showLog();
+        logEl.textContent = drawLog.join("\n");
+        logEl.scrollTop = logEl.scrollHeight;
+    } else {
+        logWrap.style.display = "none";
+        logEl.textContent = "";
+    }
+}
+
 function setCharsLoading() {
     charList.replaceChildren();
     const row = document.createElement("div");
@@ -128,9 +139,9 @@ function renderChars(roles) {
     attachHistoryListeners();
 }
 
-function renderDrawsLeft(drawsLeft, lastCheck) {
+function renderDrawsLeft(drawsLeft) {
     if (drawsLeft !== null && drawsLeft !== undefined) {
-        totalDrawsEl.textContent = `${drawsLeft} lượt còn lại (${lastCheck || "Chưa kiểm tra"})`;
+        totalDrawsEl.textContent = `${drawsLeft} lượt còn lại`;
     }
 }
 
@@ -144,13 +155,14 @@ async function renderCache(mall) {
         });
 
         if (res?.error) throw new Error(res.error);
+        const { [`${mall}_drawLog`]: drawLog } =
+            await chrome.storage.local.get(`${mall}_drawLog`);
         if (!res?.hasToken) {
             setStatus("Chưa có dữ liệu, hãy Capture Token");
             setCharsEmpty("Chưa có dữ liệu, hãy Capture Token");
             tokenBox.value = "";
             totalDrawsEl.textContent = "— lượt còn lại";
-            logWrap.style.display = "none";
-            logEl.textContent = "";
+            renderDrawLog(drawLog);
             return;
         }
 
@@ -163,18 +175,9 @@ async function renderCache(mall) {
         const { [`${mall}_token`]: token } = await chrome.storage.local.get(`${mall}_token`);
         if (token) tokenBox.value = token;
 
-        renderDrawsLeft(res.drawsLeft, res.lastCheck);
+        renderDrawsLeft(res.drawsLeft);
 
-        const { [`${mall}_drawLog`]: drawLog } =
-            await chrome.storage.local.get(`${mall}_drawLog`);
-        if (drawLog?.length) {
-            showLog();
-            logEl.textContent = drawLog.join("\n");
-            logEl.scrollTop = logEl.scrollHeight;
-        } else {
-            logWrap.style.display = "none";
-            logEl.textContent = "";
-        }
+        renderDrawLog(drawLog);
 
         if (res.roles?.length > 0) {
             renderChars(res.roles);
@@ -218,7 +221,7 @@ async function fetchAndRender(mall) {
             });
 
             setStatus(res.isValidToken ? "Token OK" : "Token không hợp lệ", !!res.isValidToken);
-            renderDrawsLeft(res.totalDrawsLeft, res.lastCheck);
+            renderDrawsLeft(res.totalDrawsLeft);
 
             const roles = Array.isArray(res.roles) ? res.roles : [];
             if (roles.length > 0) {
@@ -580,11 +583,13 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         setLoginSettingsStatus(changes.autoReloginStatus.newValue);
     }
     const mall = getSelectedMall();
+    if (changes[`${mall}_drawLog`]) {
+        renderDrawLog(changes[`${mall}_drawLog`].newValue);
+    }
     if (
         changes[`${mall}_token`] ||
         changes[`${mall}_roles`] ||
-        changes[`${mall}_drawsLeft`] ||
-        changes[`${mall}_lastCheck`]
+        changes[`${mall}_drawsLeft`]
     ) {
         renderCache(mall);
     }
