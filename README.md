@@ -46,7 +46,7 @@ Các yêu cầu API có timeout 20 giây; giữa các nhân vật có khoảng n
 2. Chọn tab cửa hàng cần cấu hình: **Plutomall** hoặc **Lilith Store**.
 3. Nhập tài khoản và mật khẩu cho đúng cửa hàng rồi bấm **Lưu thông tin**. Thông tin của hai cửa hàng được lưu tách biệt.
 4. Bật checkbox **Auto đăng nhập lại**. Có thể thu nhỏ phần cài đặt bằng nút mũi tên; thao tác này không tắt tính năng.
-5. Khi extension nhận diện token hết hạn từ phản hồi API, extension mở trang đăng nhập trong một tab nền, không chuyển focus khỏi tab hiện tại. Sau khi đăng nhập và quay về cửa hàng, extension đợi token mới rồi làm mới nhân vật và lượt quay.
+5. Khi extension nhận diện token hết hạn từ phản hồi API, extension mở trang đăng nhập trong một tab nền, không chuyển focus khỏi tab hiện tại. Nếu cửa hàng hiện hộp thoại hỏi có chuyển sang tài khoản vừa đăng nhập hay tiếp tục tài khoản cũ, extension tự chọn **chuyển sang tài khoản mới**. Sau đó extension đợi token của phiên mới rồi làm mới nhân vật và lượt quay.
 
 Nút **Check Plutomall** hoặc **Check Lilith Store** mở thủ công tab đăng nhập tương ứng để kiểm tra. Nút này không giả lập token hết hạn. Cần bật Auto đăng nhập lại và lưu tài khoản/mật khẩu của cửa hàng trước khi kiểm tra.
 

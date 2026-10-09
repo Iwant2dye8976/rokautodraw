@@ -2,6 +2,7 @@ const DRAW_API = "https://plat-campaign-api.lilithgame.com";
 const activeDraws = new Set();
 const activeRelogins = new Set();
 const activeReloginRefreshes = new Set();
+const activeReloginAccountChecks = new Set();
 const LILITH_STORE_URL = "https://passport-global.lilith.com/login?client_id=gamepay_lglo&game_id=10043&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fstore.lilith.com&app_id=2104267&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Flilith.png&client_name=LiLith+Store&redirect_to=https://store.lilith.com/rok?tab=perks&login_way=S-A&locale=vi";
 const PLUTOMALL_RELOGIN_URL = "https://passport.pup.vn/login?client_id=gamepay_lglo&game_id=10043&subject=vn_gamota&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fwww.plutomall.com.vn&app_id=6626468&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Fexternal_app.png&client_name=%E1%BB%A8ng+d%E1%BB%A5ng+kh%C3%A1c&redirect_to=https%3A%2F%2Fwww.plutomall.com.vn%2Frok%2Fvn%3Ftab%3Dperks&login_way=S-A&locale=vi";
 const RELOGIN_ORIGINS = {
@@ -11,6 +12,10 @@ const RELOGIN_ORIGINS = {
 const STORE_NAMES = {
     lilithstore: "Lilith Store",
     plutomall: "Plutomall",
+};
+const STORE_ORIGINS = {
+    lilithstore: { origin: "https://store.lilith.com", path: "/rok" },
+    plutomall: { origin: "https://www.plutomall.com.vn", path: "/rok/vn" },
 };
 
 const STORE_CONFIG = {
@@ -182,6 +187,8 @@ async function openReloginWindow(mall) {
                     "autoReloginStartedAt",
                     "autoReloginMall",
                     "autoReloginReturnedAt",
+                    "autoReloginReadyAt",
+                    "autoReloginAccountSwitch",
                 ]);
             }
         }
@@ -212,6 +219,8 @@ async function openReloginWindow(mall) {
                 "autoReloginStartedAt",
                 "autoReloginMall",
                 "autoReloginReturnedAt",
+                "autoReloginReadyAt",
+                "autoReloginAccountSwitch",
             ]);
             return false;
         }
@@ -355,16 +364,19 @@ async function refreshStoreAfterRelogin(mall) {
         autoReloginTabId,
         autoReloginStartedAt,
         autoReloginReturnedAt,
+        autoReloginReadyAt,
         autoReloginMall,
     } = await chrome.storage.session.get([
         "autoReloginTabId",
         "autoReloginStartedAt",
         "autoReloginReturnedAt",
+        "autoReloginReadyAt",
         "autoReloginMall",
     ]);
     if (
         autoReloginMall !== mall ||
         !autoReloginReturnedAt ||
+        !Number.isFinite(autoReloginReadyAt) ||
         !Number.isInteger(autoReloginTabId) ||
         activeReloginRefreshes.has(autoReloginTabId)
     ) return;
@@ -379,7 +391,7 @@ async function refreshStoreAfterRelogin(mall) {
     if (
         !token ||
         !Number.isFinite(data[sk(mall, "tokenTimestamp")]) ||
-        data[sk(mall, "tokenTimestamp")] <= autoReloginStartedAt ||
+        data[sk(mall, "tokenTimestamp")] <= autoReloginReadyAt ||
         !data[sk(mall, "appUid")] ||
         !data[sk(mall, "appId")]
     ) return;
@@ -403,33 +415,154 @@ async function refreshStoreAfterRelogin(mall) {
             "autoReloginStartedAt",
             "autoReloginMall",
             "autoReloginReturnedAt",
+            "autoReloginReadyAt",
+            "autoReloginAccountSwitch",
         ]);
         activeReloginRefreshes.delete(autoReloginTabId);
     }
+}
+
+function isReloginStoreUrl(url, mall) {
+    const store = STORE_ORIGINS[mall];
+    return Boolean(
+        store &&
+        url.origin === store.origin &&
+        url.pathname.startsWith(store.path)
+    );
+}
+
+async function markReloginReadyWithoutAccountSwitch(mall, startedAt) {
+    const session = await chrome.storage.session.get([
+        "autoReloginMall",
+        "autoReloginReadyAt",
+    ]);
+    if (session.autoReloginMall !== mall || session.autoReloginReadyAt) return;
+    if (!Number.isFinite(startedAt)) {
+        throw new Error("Không tìm thấy thời điểm bắt đầu phiên tự đăng nhập.");
+    }
+
+    await chrome.storage.session.set({ autoReloginReadyAt: startedAt });
+    await chrome.storage.local.set({
+        autoReloginStatus: `Không xuất hiện yêu cầu đổi tài khoản ${STORE_NAMES[mall]}; đang tiếp tục với phiên cửa hàng hiện có.`,
+    });
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== "complete" || !tab.url) return;
     void (async () => {
         if (activeReloginRefreshes.has(tabId)) return;
-        const { autoReloginTabId, autoReloginMall } = await chrome.storage.session.get([
+        const {
+            autoReloginTabId,
+            autoReloginMall,
+            autoReloginStartedAt,
+            autoReloginReadyAt,
+        } = await chrome.storage.session.get([
             "autoReloginTabId",
             "autoReloginMall",
+            "autoReloginStartedAt",
+            "autoReloginReadyAt",
         ]);
         if (tabId !== autoReloginTabId) return;
         const url = new URL(tab.url);
-        const returnedToStore = autoReloginMall === "lilithstore"
-            ? url.origin === "https://store.lilith.com" && url.pathname.startsWith("/rok")
-            : autoReloginMall === "plutomall" &&
-                url.origin === "https://www.plutomall.com.vn" &&
-                url.pathname.startsWith("/rok/vn");
-        if (!returnedToStore) return;
+        if (!isReloginStoreUrl(url, autoReloginMall)) return;
+        if (autoReloginReadyAt) {
+            await refreshStoreAfterRelogin(autoReloginMall);
+            return;
+        }
+
         await chrome.storage.session.set({ autoReloginReturnedAt: Date.now() });
         await chrome.storage.local.set({
-            autoReloginStatus: `Đã trở về ${STORE_NAMES[autoReloginMall]}; đang chờ token mới để làm mới dữ liệu.`,
+            autoReloginStatus: `Đã trở về ${STORE_NAMES[autoReloginMall]}; đang kiểm tra yêu cầu chuyển sang tài khoản mới.`,
         });
+
+        if (activeReloginAccountChecks.has(tabId)) return;
+        activeReloginAccountChecks.add(tabId);
+        try {
+            const results = await chrome.scripting.executeScript({
+                target: { tabId, frameIds: [0] },
+                args: [autoReloginMall],
+                func: async mall => {
+                    const selector = "#renderJsxToDomDiv > div > div.adm-center-popup-wrap > div > div > section > div > footer > div:nth-child(1)";
+                    const findVisibleChoice = () => {
+                        const choice = document.querySelector(selector);
+                        const popup = choice?.closest(".adm-center-popup-wrap");
+                        if (
+                            !choice ||
+                            !popup ||
+                            choice.getClientRects().length === 0 ||
+                            popup.getClientRects().length === 0 ||
+                            choice.matches(":disabled")
+                        ) return null;
+                        return choice;
+                    };
+                    const choice = await new Promise(resolve => {
+                        let settled = false;
+                        const observer = new MutationObserver(check);
+                        const timeout = setTimeout(() => finish(null), 10000);
+
+                        function finish(element) {
+                            if (settled) return;
+                            settled = true;
+                            clearTimeout(timeout);
+                            observer.disconnect();
+                            resolve(element);
+                        }
+
+                        function check() {
+                            const element = findVisibleChoice();
+                            if (element) finish(element);
+                        }
+
+                        check();
+                        if (!settled) {
+                            observer.observe(document.documentElement, {
+                                childList: true,
+                                subtree: true,
+                                attributes: true,
+                            });
+                        }
+                    });
+                    if (!choice) return { found: false };
+
+                    const ready = await new Promise((resolve, reject) => {
+                        chrome.runtime.sendMessage(
+                            { action: "accountSwitchReady", mall },
+                            response => {
+                                if (chrome.runtime.lastError) {
+                                    reject(new Error(chrome.runtime.lastError.message));
+                                } else if (!response?.ok) {
+                                    reject(new Error(response?.error || "Không xác nhận được phiên đổi tài khoản"));
+                                } else {
+                                    resolve(response);
+                                }
+                            }
+                        );
+                    });
+                    if (!ready?.ok) return { found: true, clicked: false };
+                    choice.click();
+                    return { found: true, clicked: true };
+                },
+            });
+            const result = results[0]?.result;
+            if (result?.clicked) {
+                console.log(`[LilithDraw][${autoReloginMall}] Switched to the newly logged-in account`);
+            } else if (result?.found) {
+                throw new Error("Đã thấy hộp thoại đổi tài khoản nhưng không bấm được lựa chọn tài khoản mới.");
+            } else {
+                await markReloginReadyWithoutAccountSwitch(autoReloginMall, autoReloginStartedAt);
+            }
+        } finally {
+            activeReloginAccountChecks.delete(tabId);
+        }
         await refreshStoreAfterRelogin(autoReloginMall);
-    })().catch(error => console.error("[LilithDraw] Could not verify relogin redirect:", error));
+    })().catch(error => {
+        console.error("[LilithDraw] Could not verify relogin redirect:", error);
+        void chrome.storage.local.set({
+            autoReloginStatus: `Không thể xử lý hộp thoại chuyển tài khoản: ${error.message}`,
+        }).catch(storageError => {
+            console.error("[LilithDraw] Could not save account-switch error status:", storageError);
+        });
+    });
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -464,6 +597,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
             "autoReloginStartedAt",
             "autoReloginMall",
             "autoReloginReturnedAt",
+            "autoReloginReadyAt",
+            "autoReloginAccountSwitch",
         ]);
         await chrome.storage.local.remove([
             "autoReloginStatus",
@@ -557,15 +692,67 @@ async function getManifest(token, role, mall) {
     );
 }
 
+function getRoleDrawCount(manifest, mall) {
+    const componentId = STORE_CONFIG[mall]?.componentId;
+    if (!componentId || !manifest || typeof manifest !== "object") {
+        throw new Error(`Không tìm thấy manifest hợp lệ cho ${STORE_NAMES[mall]}`);
+    }
+
+    const counters = [];
+    const visited = new WeakSet();
+    const visit = value => {
+        if (!value || typeof value !== "object" || visited.has(value)) return;
+        visited.add(value);
+
+        if (
+            value.params &&
+            typeof value.params === "object" &&
+            Object.prototype.hasOwnProperty.call(value.params, "curDrawTimes")
+        ) {
+            const identifiers = [
+                value.componentId,
+                value.component_id,
+                value.componentID,
+                value.id,
+                value.cid,
+            ].filter(identifier => identifier !== undefined && identifier !== null)
+                .map(String);
+            counters.push({
+                rawCount: value.params.curDrawTimes,
+                matchesComponent: identifiers.includes(componentId),
+            });
+        }
+
+        for (const child of Object.values(value)) visit(child);
+    };
+    visit(manifest);
+
+    const matchingCounters = counters.filter(counter => counter.matchesComponent);
+    const candidates = matchingCounters.length > 0
+        ? matchingCounters
+        : counters.length === 1 ? counters : [];
+    if (candidates.length !== 1) {
+        throw new Error(
+            `Không xác định được bộ đếm lượt quay của ${STORE_NAMES[mall]} trong manifest`
+        );
+    }
+
+    const rawCount = candidates[0].rawCount;
+    if (typeof rawCount === "string" && rawCount.trim() === "") {
+        throw new Error(`Bộ đếm lượt quay của ${STORE_NAMES[mall]} không hợp lệ`);
+    }
+    const count = Number(rawCount);
+    if (!Number.isSafeInteger(count) || count < 0) {
+        throw new Error(`Bộ đếm lượt quay của ${STORE_NAMES[mall]} không hợp lệ`);
+    }
+    return count;
+}
+
 async function getTotalDrawsLeft(token, roles, mall) {
     let total = 0;
     for (const role of roles) {
         const manifest = await getManifest(token, role, mall);
-        if (manifest) {
-            const drawCount = manifest?.data?.campaigns?.[0]?.displayModules?.[0]?.components?.[0]?.params?.curDrawTimes;
-            const count = Number(drawCount);
-            if (Number.isFinite(count) && count > 0) total += count;
-        }
+        total += getRoleDrawCount(manifest, mall);
     }
     const lastCheck = new Date().toLocaleString();
     await setStoreData(mall, { drawsLeft: total, lastCheck });
@@ -626,7 +813,7 @@ async function runDraws(token, mall, forceRefreshRoles = false) {
         }
         try {
             const manifest = await getManifest(token, role, mall);
-            const drawCount = Number(manifest?.data?.campaigns?.[0]?.displayModules?.[0]?.components?.[0]?.params?.curDrawTimes ?? 0);
+            const drawCount = getRoleDrawCount(manifest, mall);
             if (drawCount > 0) {
                 const result = await drawOnce(token, role, mall);
                 const rewardId = result?.data?.rewardId;
@@ -709,6 +896,53 @@ async function autoSurvey(csrf, params) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || typeof msg !== "object") return false;
+
+    if (msg.action === "accountSwitchReady") {
+        (async () => {
+            const [session, settings] = await Promise.all([
+                chrome.storage.session.get([
+                    "autoReloginTabId",
+                    "autoReloginStartedAt",
+                    "autoReloginMall",
+                ]),
+                chrome.storage.local.get("autoReloginEnabled"),
+            ]);
+            let senderUrl;
+            try {
+                senderUrl = new URL(sender.url || "");
+            } catch {
+                senderUrl = null;
+            }
+            if (
+                !STORE_CONFIG[msg.mall] ||
+                session.autoReloginMall !== msg.mall ||
+                sender.tab?.id !== session.autoReloginTabId ||
+                sender.frameId !== 0 ||
+                !senderUrl ||
+                !isReloginStoreUrl(senderUrl, msg.mall) ||
+                !Number.isFinite(session.autoReloginStartedAt) ||
+                Date.now() - session.autoReloginStartedAt > 10 * 60 * 1000 ||
+                settings.autoReloginEnabled !== true
+            ) {
+                sendResponse({ error: "Không có phiên đổi tài khoản hợp lệ" });
+                return;
+            }
+
+            const { autoReloginReadyAt } = await chrome.storage.session.get("autoReloginReadyAt");
+            if (!autoReloginReadyAt) {
+                await chrome.storage.session.set({
+                    autoReloginReturnedAt: Date.now(),
+                    autoReloginReadyAt: Date.now(),
+                    autoReloginAccountSwitch: true,
+                });
+                await chrome.storage.local.set({
+                    autoReloginStatus: `Đã phát hiện yêu cầu chuyển tài khoản ${STORE_NAMES[msg.mall]}; đang chọn tài khoản mới.`,
+                });
+            }
+            sendResponse({ ok: true });
+        })().catch(error => sendResponse({ error: error.message }));
+        return true;
+    }
 
     if (msg.action === "testRelogin" && STORE_CONFIG[msg.mall]) {
         openReloginWindow(msg.mall)
