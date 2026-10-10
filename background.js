@@ -337,49 +337,87 @@ chrome.webRequest.onSendHeaders.addListener(
 );
 
 
-const DAILY_RESET_ALARM = "dailyResetCheck";
-const DAILY_RESET_PERIOD_MINUTES = 60;
+const AUTO_CHECK_ALARM = "dailyResetCheck";
+const DEFAULT_AUTO_CHECK_INTERVAL_MINUTES = 60;
 
-async function ensureDailyResetAlarm() {
+async function getAutoCheckSettings() {
+    const settings = await chrome.storage.local.get([
+        "autoCheckEnabled",
+        "autoCheckIntervalMinutes",
+    ]);
+    const intervalMinutes = Number.isSafeInteger(settings.autoCheckIntervalMinutes) &&
+        settings.autoCheckIntervalMinutes >= 1
+        ? settings.autoCheckIntervalMinutes
+        : DEFAULT_AUTO_CHECK_INTERVAL_MINUTES;
+    return {
+        enabled: settings.autoCheckEnabled !== false,
+        intervalMinutes,
+    };
+}
+
+async function ensureAutoCheckAlarm() {
     try {
-        let alarm = await chrome.alarms.get(DAILY_RESET_ALARM);
-        if (alarm && alarm.periodInMinutes === DAILY_RESET_PERIOD_MINUTES) return;
+        const settings = await getAutoCheckSettings();
+        let alarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
 
-        if (alarm) await chrome.alarms.clear(DAILY_RESET_ALARM);
-        await chrome.alarms.create(DAILY_RESET_ALARM, {
-            periodInMinutes: DAILY_RESET_PERIOD_MINUTES,
+        if (!settings.enabled) {
+            if (alarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
+            console.log("[LilithDraw] Automatic check is disabled");
+            return false;
+        }
+
+        if (alarm && alarm.periodInMinutes === settings.intervalMinutes) return true;
+
+        if (alarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
+        await chrome.alarms.create(AUTO_CHECK_ALARM, {
+            periodInMinutes: settings.intervalMinutes,
         });
-        alarm = await chrome.alarms.get(DAILY_RESET_ALARM);
+        alarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
         if (!alarm) throw new Error("Alarm was not present after creation");
         console.log(
-            `[LilithDraw] Daily reset alarm active: every ${alarm.periodInMinutes} minute(s); next at ${new Date(alarm.scheduledTime).toLocaleString()}`
+            `[LilithDraw] Automatic check active: every ${alarm.periodInMinutes} minute(s); next at ${new Date(alarm.scheduledTime).toLocaleString()}`
         );
+        return true;
     } catch (error) {
-        console.error("[LilithDraw] Could not ensure daily reset alarm:", error);
+        console.error("[LilithDraw] Could not ensure automatic check alarm:", error);
+        return false;
     }
 }
 
 chrome.runtime.onStartup.addListener(() => {
-    void ensureDailyResetAlarm();
-    void autoDrawAllMalls("Khởi động Chrome").catch((error) => {
-        console.error("[LilithDraw] Startup auto draw failed:", error);
+    void ensureAutoCheckAlarm().then(async () => {
+        const settings = await getAutoCheckSettings();
+        if (settings.enabled) await autoDrawAllMalls("Khởi động Chrome");
+    }).catch(error => {
+        console.error("[LilithDraw] Could not check automatic-check settings at startup:", error);
     });
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-    ensureDailyResetAlarm();
+    void ensureAutoCheckAlarm();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === DAILY_RESET_ALARM) {
-        console.log("[LilithDraw] Daily reset alarm fired");
-        void autoDrawAllMalls("Alarm định kỳ").catch((error) => {
-            console.error("[LilithDraw] Scheduled auto draw failed:", error);
+    if (alarm.name === AUTO_CHECK_ALARM) {
+        console.log("[LilithDraw] Automatic check alarm fired");
+        void getAutoCheckSettings().then(async settings => {
+            if (settings.enabled) await autoDrawAllMalls("Alarm định kỳ");
+        }).catch(error => {
+            console.error("[LilithDraw] Scheduled auto check failed:", error);
         });
     }
 });
 
-ensureDailyResetAlarm();
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (
+        areaName === "local" &&
+        (changes.autoCheckEnabled || changes.autoCheckIntervalMinutes)
+    ) {
+        void ensureAutoCheckAlarm();
+    }
+});
+
+void ensureAutoCheckAlarm();
 
 async function refreshStoreAfterRelogin(mall) {
     const {
@@ -650,6 +688,17 @@ async function autoDrawMall(mall, trigger) {
         if (!token) {
             await chrome.storage.local.set({
                 [sk(mall, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Bỏ qua: chưa có token"],
+            });
+            return;
+        }
+        const roles = await getRoles(token, mall, true);
+        const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall);
+        if (totalDrawsLeft === 0) {
+            await chrome.storage.local.set({
+                [sk(mall, "drawLog")]: [
+                    `${trigger} lúc ${checkedAt}`,
+                    "Kiểm tra hoàn tất: không còn lượt quay, bỏ qua quay thưởng.",
+                ],
             });
             return;
         }

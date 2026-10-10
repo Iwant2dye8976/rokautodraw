@@ -5,6 +5,11 @@ const logWrap = document.getElementById("logWrap");
 const tokenBox = document.getElementById("tokenBox");
 const charList = document.getElementById("charList");
 const totalDrawsEl = document.getElementById("drawsRemaining");
+const autoCheckCheckbox = document.getElementById("autoCheckEnabled");
+const autoCheckSettings = document.getElementById("autoCheckSettings");
+const autoCheckDisclosure = document.getElementById("autoCheckDisclosure");
+const autoCheckIntervalInput = document.getElementById("autoCheckIntervalMinutes");
+const autoCheckSettingsStatus = document.getElementById("autoCheckSettingsStatus");
 const autoReloginCheckbox = document.getElementById("autoReloginEnabled");
 const autoReloginSettings = document.getElementById("autoReloginSettings");
 const autoReloginDisclosure = document.getElementById("autoReloginDisclosure");
@@ -430,6 +435,48 @@ function setLoginSettingsStatus(message) {
     loginSettingsStatus.textContent = message;
 }
 
+function setAutoCheckExpanded(expanded) {
+    autoCheckSettings.hidden = !expanded;
+    autoCheckDisclosure.setAttribute("aria-expanded", String(expanded));
+    autoCheckDisclosure.setAttribute(
+        "aria-label",
+        `${expanded ? "Thu nhỏ" : "Mở rộng"} cài đặt Auto kiểm tra`
+    );
+}
+
+autoCheckDisclosure.addEventListener("click", () => {
+    setAutoCheckExpanded(autoCheckSettings.hidden);
+});
+
+autoCheckCheckbox.addEventListener("change", async () => {
+    setAutoCheckExpanded(autoCheckCheckbox.checked);
+    try {
+        await chrome.storage.local.set({ autoCheckEnabled: autoCheckCheckbox.checked });
+        autoCheckSettingsStatus.textContent = autoCheckCheckbox.checked
+            ? "Đã bật kiểm tra tự động."
+            : "Đã tắt kiểm tra tự động.";
+    } catch (error) {
+        autoCheckCheckbox.checked = !autoCheckCheckbox.checked;
+        setAutoCheckExpanded(autoCheckCheckbox.checked);
+        autoCheckSettingsStatus.textContent = `Không thể cập nhật cài đặt: ${error.message}`;
+    }
+});
+
+autoCheckIntervalInput.addEventListener("change", async () => {
+    const intervalMinutes = Number(autoCheckIntervalInput.value);
+    if (!Number.isSafeInteger(intervalMinutes) || intervalMinutes < 1) {
+        autoCheckSettingsStatus.textContent = "Thời gian kiểm tra phải là số phút nguyên từ 1 trở lên.";
+        return;
+    }
+
+    try {
+        await chrome.storage.local.set({ autoCheckIntervalMinutes: intervalMinutes });
+        autoCheckSettingsStatus.textContent = `Đã đặt thời gian kiểm tra mỗi ${intervalMinutes} phút.`;
+    } catch (error) {
+        autoCheckSettingsStatus.textContent = `Không thể lưu thời gian kiểm tra: ${error.message}`;
+    }
+});
+
 function setAutoReloginExpanded(expanded) {
     autoReloginSettings.hidden = !expanded;
     autoReloginDisclosure.setAttribute("aria-expanded", String(expanded));
@@ -679,6 +726,8 @@ document.getElementById("drawNowBtn").addEventListener("click", () => {
 (async () => {
     try {
         const settings = await chrome.storage.local.get([
+            "autoCheckEnabled",
+            "autoCheckIntervalMinutes",
             "autoReloginEnabled",
             "lilithstoreUsername",
             "lilithstorePassword",
@@ -686,8 +735,14 @@ document.getElementById("drawNowBtn").addEventListener("click", () => {
             "plutomallPassword",
             "autoReloginStatus",
         ]);
+        autoCheckCheckbox.checked = settings.autoCheckEnabled !== false;
+        autoCheckIntervalInput.value = Number.isSafeInteger(settings.autoCheckIntervalMinutes) &&
+            settings.autoCheckIntervalMinutes >= 1
+            ? String(settings.autoCheckIntervalMinutes)
+            : "60";
+        setAutoCheckExpanded(!autoCheckCheckbox.checked);
         autoReloginCheckbox.checked = settings.autoReloginEnabled === true;
-        setAutoReloginExpanded(autoReloginCheckbox.checked);
+        setAutoReloginExpanded(!autoReloginCheckbox.checked);
         if (settings.autoReloginStatus) setLoginSettingsStatus(settings.autoReloginStatus);
         await loadSavedLoginCredentials();
 

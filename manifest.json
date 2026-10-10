@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Lilith Auto Draw",
-  "version": "1.0",
+  "name": "ROK Weekly Auto",
+  "version": "1.1",
   "permissions": [
     "storage",
     "tabs",

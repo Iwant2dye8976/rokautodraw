@@ -36,7 +36,7 @@ Token, nhân vật và lượt quay được lưu riêng theo từng cửa hàng
 - Chọn đúng cửa hàng trong phần **Thao tác**.
 - Bấm **Quay thưởng ngay** để chạy lượt quay cho các nhân vật có lượt.
 - Theo dõi tiến trình và kết quả trong phần **Nhật ký**.
-- Extension cũng kiểm tra và chạy quay tự động khi Chrome khởi động và theo chu kỳ một giờ. Chỉ các cửa hàng đã có token được lưu mới có thể chạy.
+- Extension cũng kiểm tra và chạy quay tự động khi Chrome khởi động và theo chu kỳ đã cài đặt (mặc định một giờ). Chỉ các cửa hàng đã có token được lưu mới có thể chạy. Tắt **Auto kiểm tra** sẽ dừng cả lịch kiểm tra và lần kiểm tra tự động khi Chrome khởi động.
 
 Các yêu cầu API có timeout 20 giây; giữa các nhân vật có khoảng nghỉ 0,5 giây. Nếu token hết hạn, extension có thể mở luồng tự đăng nhập lại theo cài đặt bên dưới.
 
@@ -51,6 +51,12 @@ Các yêu cầu API có timeout 20 giây; giữa các nhân vật có khoảng n
 Nút **Check Plutomall** hoặc **Check Lilith Store** mở thủ công tab đăng nhập tương ứng để kiểm tra. Nút này không giả lập token hết hạn. Cần bật Auto đăng nhập lại và lưu tài khoản/mật khẩu của cửa hàng trước khi kiểm tra.
 
 Chọn **Xóa thông tin** để xóa thông tin đăng nhập của cả hai cửa hàng và tắt Auto đăng nhập lại. Mật khẩu được lưu trong `chrome.storage.local` của hồ sơ Chrome đang sử dụng; không gửi hoặc chia sẻ thư mục dữ liệu/trạng thái extension nếu trong đó có thông tin nhạy cảm.
+
+## Cấu hình Auto kiểm tra
+
+1. Dùng checkbox **Auto kiểm tra** để bật hoặc tắt kiểm tra và quay tự động.
+2. Mở rộng phần cài đặt bằng nút mũi tên để thay đổi thời gian giữa các lần kiểm tra (tính bằng phút; tối thiểu 1 phút).
+3. Thời gian mặc định là 60 phút. Cài đặt được lưu tự động và áp dụng cho lịch chạy định kỳ cũng như kiểm tra lúc Chrome khởi động.
 
 ## Ý nghĩa trạng thái
 

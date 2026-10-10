@@ -303,6 +303,10 @@ body {
     font: inherit;
 }
 
+.auto-check-interval {
+    margin-top: 10px;
+}
+
 .login-note,
 .login-settings-status {
     margin: 8px 0;

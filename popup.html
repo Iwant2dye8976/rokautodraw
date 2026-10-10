@@ -19,6 +19,46 @@
       <div class="card glass">
         <div class="card-head">
           <div class="auto-relogin-header">
+            <label class="auto-relogin-toggle" for="autoCheckEnabled">
+              <span class="eyebrow">Auto kiểm tra</span>
+              <input id="autoCheckEnabled" type="checkbox" />
+            </label>
+            <button
+              class="auto-relogin-disclosure"
+              id="autoCheckDisclosure"
+              type="button"
+              aria-label="Mở rộng cài đặt Auto kiểm tra"
+              aria-expanded="false"
+              aria-controls="autoCheckSettings"
+            >
+              <span class="disclosure-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+        <br>
+        <div class="card-body" id="autoCheckSettings" hidden>
+          <label class="login-field auto-check-interval">
+            <span>Thời gian giữa mỗi lần kiểm tra (phút)</span>
+            <input
+              id="autoCheckIntervalMinutes"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+            />
+          </label>
+          <div
+            class="login-settings-status"
+            id="autoCheckSettingsStatus"
+            role="status"
+            aria-live="polite"
+          ></div>
+        </div>
+      </div>
+
+      <div class="card glass">
+        <div class="card-head">
+          <div class="auto-relogin-header">
             <label class="auto-relogin-toggle" for="autoReloginEnabled">
               <span class="eyebrow">Auto đăng nhập lại</span>
               <input id="autoReloginEnabled" type="checkbox" />
