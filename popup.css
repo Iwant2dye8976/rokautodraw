@@ -74,14 +74,23 @@ body {
     -webkit-backdrop-filter: blur(28px) saturate(180%);
     border-bottom: 1px solid rgba(255, 255, 255, 0.8);
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
-    height: 46px;
+    min-height: 62px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 16px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 16px;
     position: sticky;
     top: 0;
     z-index: 100;
+}
+
+.g-nav-main {
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .g-nav-brand {
@@ -90,6 +99,19 @@ body {
     font-weight: 600;
     color: var(--ink);
     letter-spacing: -0.2px;
+    white-space: nowrap;
+}
+
+.utc-clock {
+    align-self: flex-end;
+    color: var(--ink-60);
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: -0.2px;
+    font-variant-numeric: tabular-nums;
+    line-height: 16px;
+    white-space: nowrap;
 }
 
 .status-pill {

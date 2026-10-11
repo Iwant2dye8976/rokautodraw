@@ -44,11 +44,17 @@ function sk(mall, name) {
     return `${mall}_${name}`;
 }
 
-function isExpiredTokenResponse(json) {
+function isExpiredTokenResponse(json, url) {
     const code = Number(json?.code ?? json?.ret ?? json?.status);
     if (code === 401 || code === 403) return true;
     const message = `${json?.msg ?? ""} ${json?.message ?? ""}`.toLowerCase();
-    return /token.{0,30}(expired|invalid|过期|失效|无效)|(?:expired|invalid|过期|失效|无效).{0,30}token|unauthori[sz]ed/.test(message);
+    const hasExpiredTokenMessage =
+        /token.{0,30}(expired|invalid|过期|失效|无效)|(?:expired|invalid|过期|失效|无效).{0,30}token|unauthori[sz]ed/.test(message);
+    const userRolesAreEmpty =
+        new URL(url).pathname.endsWith("/user-roles") &&
+        Array.isArray(json?.data?.list) &&
+        json.data.list.length === 0;
+    return hasExpiredTokenMessage || userRolesAreEmpty;
 }
 
 async function getCurrentMall() {
@@ -120,10 +126,12 @@ async function fetchJson(url, options = {}) {
             error.status = response.status;
             throw error;
         }
-        if (response.ok && isExpiredTokenResponse(json)) {
+        if (response.ok && isExpiredTokenResponse(json, url)) {
             const mall = detectMallFromUrl(url);
             if (mall) void openReloginWindow(mall);
-            const error = new Error(json?.msg || json?.message || "Token đã hết hạn");
+            const error = new Error(
+                json?.msg || json?.message || "Token đã hết hạn"
+            );
             error.status = 401;
             throw error;
         }

@@ -1,5 +1,6 @@
 const statusEl = document.getElementById("status");
 const statusDot = document.getElementById("statusDot");
+const utcClockEl = document.getElementById("utcClock");
 const logEl = document.getElementById("log");
 const logWrap = document.getElementById("logWrap");
 const tokenBox = document.getElementById("tokenBox");
@@ -14,6 +15,20 @@ const autoReloginCheckbox = document.getElementById("autoReloginEnabled");
 const autoReloginSettings = document.getElementById("autoReloginSettings");
 const autoReloginDisclosure = document.getElementById("autoReloginDisclosure");
 const loginSettingsStatus = document.getElementById("loginSettingsStatus");
+const utcClockFormatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+});
+
+function updateUtcClock() {
+    utcClockEl.textContent = `UTC ${utcClockFormatter.format(new Date())} - ${new Date().toLocaleDateString()}`;
+}
+
+updateUtcClock();
+setInterval(updateUtcClock, 1000);
 
 const MALL_PATTERNS = {
     plutomall: ["plutomall.com"],
