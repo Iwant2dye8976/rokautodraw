@@ -10,7 +10,8 @@
     "webRequest",
     "webRequestAuthProvider",
     "alarms",
-    "notifications"
+    "notifications",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://*.lilithgame.com/*",

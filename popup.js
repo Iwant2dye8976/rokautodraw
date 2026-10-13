@@ -45,6 +45,8 @@ const MALL_TAB_PATTERNS = {
     lilithstore: "*://store.lilith.com/*"
 };
 
+let charRenderVersion = 0;
+
 function setStatus(text, on = false) {
     statusEl.textContent = text;
     if (statusDot) statusDot.className = "status-dot" + (on ? " on" : " off");
@@ -67,6 +69,7 @@ function renderDrawLog(drawLog) {
 }
 
 function setCharsLoading() {
+    charRenderVersion++;
     charList.replaceChildren();
     const row = document.createElement("div");
     row.className = "char-row";
@@ -86,6 +89,7 @@ function setCharsError(msg) {
 }
 
 function setCharsMessage(message, className) {
+    charRenderVersion++;
     charList.replaceChildren();
     const row = document.createElement("div");
     row.className = "char-row";
@@ -129,9 +133,35 @@ async function detectMall() {
     return mall;
 }
 
-function renderChars(roles) {
+async function renderChars(roles, mall) {
+    const renderVersion = ++charRenderVersion;
+    const favoritesKey = `${mall}_favoriteRoleIds`;
+    let favoriteOrder;
+    try {
+        const savedFavorites = await chrome.storage.local.get(favoritesKey);
+        if (renderVersion !== charRenderVersion || mall !== getSelectedMall()) return;
+        favoriteOrder = Array.isArray(savedFavorites[favoritesKey])
+            ? savedFavorites[favoritesKey].map(String)
+            : [];
+    } catch (error) {
+        if (renderVersion !== charRenderVersion || mall !== getSelectedMall()) return;
+        console.error("Could not load favorite characters:", error);
+        setCharsError(`Không thể tải nhân vật yêu thích: ${error.message}`);
+        return;
+    }
+
     charList.replaceChildren();
-    for (const role of roles) {
+    const favoritePositions = new Map(favoriteOrder.map((roleId, index) => [roleId, index]));
+    const sortedRoles = [
+        ...roles
+            .filter(role => favoritePositions.has(String(role.roleId ?? "")))
+            .sort((a, b) =>
+                favoritePositions.get(String(a.roleId ?? "")) -
+                favoritePositions.get(String(b.roleId ?? ""))
+            ),
+        ...roles.filter(role => !favoritePositions.has(String(role.roleId ?? "")))
+    ];
+    for (const role of sortedRoles) {
         const div = document.createElement("div");
         div.className = "char-row";
         const avatarWrap = document.createElement("span");
@@ -145,15 +175,74 @@ function renderChars(roles) {
 
         const nameWrap = document.createElement("span");
         nameWrap.className = "char-name";
+        const roleId = String(role.roleId ?? "");
+        const roleName = String(role.name ?? "Không rõ tên");
         const name = document.createElement("span");
         name.className = "char-history";
-        name.dataset.roleId = String(role.roleId ?? "");
-        name.textContent = String(role.name ?? "Không rõ tên");
+        name.dataset.roleId = roleId;
+        name.textContent = roleName;
         nameWrap.appendChild(name);
+
+        const favoriteButton = document.createElement("button");
+        favoriteButton.type = "button";
+        favoriteButton.className = "char-favorite-btn";
+        const isFavorite = favoritePositions.has(roleId);
+        favoriteButton.textContent = isFavorite ? "★" : "☆";
+        favoriteButton.title = isFavorite ? "Bỏ yêu thích" : "Thêm vào yêu thích";
+        favoriteButton.setAttribute("aria-label", favoriteButton.title);
+        favoriteButton.setAttribute("aria-pressed", String(isFavorite));
+        if (isFavorite) favoriteButton.classList.add("is-favorite");
+        favoriteButton.addEventListener("click", async () => {
+            try {
+                const savedFavorites = await chrome.storage.local.get(favoritesKey);
+                const updatedFavorites = new Set(
+                    Array.isArray(savedFavorites[favoritesKey])
+                        ? savedFavorites[favoritesKey].map(String)
+                        : []
+                );
+                if (updatedFavorites.has(roleId)) {
+                    updatedFavorites.delete(roleId);
+                } else {
+                    updatedFavorites.add(roleId);
+                }
+                await chrome.storage.local.set({
+                    [favoritesKey]: [...updatedFavorites]
+                });
+                await renderChars(roles, mall);
+            } catch (error) {
+                console.error("Could not update favorite character:", error);
+                setStatus(`Không thể cập nhật yêu thích: ${error.message}`);
+            }
+        });
+
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.className = "char-copy-btn";
+        copyButton.textContent = "⧉";
+        copyButton.title = "Sao chép ID và tên nhân vật";
+        copyButton.setAttribute("aria-label", "Sao chép ID và tên nhân vật");
+        copyButton.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(`ID: ${roleId} - ${roleName}`);
+                copyButton.textContent = "✓";
+                copyButton.title = "Đã sao chép";
+                copyButton.setAttribute("aria-label", "Đã sao chép thông tin nhân vật");
+            } catch (error) {
+                console.error("Không thể sao chép thông tin nhân vật:", error);
+                copyButton.textContent = "!";
+                copyButton.title = "Không thể sao chép thông tin nhân vật";
+                copyButton.setAttribute("aria-label", "Không thể sao chép thông tin nhân vật");
+            }
+            window.setTimeout(() => {
+                copyButton.textContent = "⧉";
+                copyButton.title = "Sao chép ID và tên nhân vật";
+                copyButton.setAttribute("aria-label", "Sao chép ID và tên nhân vật");
+            }, 1500);
+        });
 
         const server = document.createElement("span");
         server.textContent = `#${role.svrId ?? "?"}`;
-        div.append(avatarWrap, nameWrap, server);
+        div.append(avatarWrap, nameWrap, favoriteButton, copyButton, server);
         charList.appendChild(div);
     }
     attachHistoryListeners();
@@ -200,7 +289,7 @@ async function renderCache(mall) {
         renderDrawLog(drawLog);
 
         if (res.roles?.length > 0) {
-            renderChars(res.roles);
+            renderChars(res.roles, mall);
         } else {
             setCharsEmpty("Nhấn Làm mới để tải nhân vật");
         }
@@ -245,7 +334,7 @@ async function fetchAndRender(mall) {
 
             const roles = Array.isArray(res.roles) ? res.roles : [];
             if (roles.length > 0) {
-                renderChars(roles);
+                renderChars(roles, m);
             } else {
                 setCharsEmpty("Không tìm thấy nhân vật");
             }
