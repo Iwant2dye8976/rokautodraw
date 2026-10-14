@@ -387,14 +387,49 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     color: var(--ink);
 }
 
+.saved-account-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+
+.saved-account-body {
+    display: grid;
+    gap: 8px;
+}
+
+.saved-account-body[hidden] {
+    display: none;
+}
+
+.btn-util.account-disclosure-btn,
 .btn-util.remove-account-btn {
-    flex: 0 0 40px;
-    width: 40px;
-    min-height: 40px;
+    flex: 0 0 44px;
+    width: 44px;
+    min-height: 44px;
     padding: 0;
+}
+
+.account-disclosure-icon {
+    width: 7px;
+    height: 7px;
+    margin-top: -3px;
+    border-right: 1.5px solid var(--ink-60);
+    border-bottom: 1.5px solid var(--ink-60);
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+}
+
+.account-disclosure-btn[aria-expanded="false"] .account-disclosure-icon {
+    margin-top: 3px;
+    transform: rotate(225deg);
+}
+
+.btn-util.remove-account-btn {
     color: #a83232;
     font-size: 20px;
     line-height: 1;

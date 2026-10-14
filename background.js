@@ -354,9 +354,12 @@ function detectMallFromUrl(url) {
 
 chrome.webRequest.onSendHeaders.addListener(
     async (details) => {
+        if (details.tabId < 0) return;
+
         const authHeader = details.requestHeaders?.find(
             h => h.name?.toLowerCase() === "authorization"
         );
+        if (!authHeader?.value) return;
 
         const session = await chrome.storage.session.get([
             "autoReloginTabId",
@@ -385,6 +388,8 @@ chrome.webRequest.onSendHeaders.addListener(
         }
 
         if (!mall) mall = await getCurrentMall();
+
+        if (!tab?.url || !mall || !isReloginStoreUrl(new URL(tab.url), mall)) return;
 
         if (mall && authHeader?.value) {
             const reloginAccountId = details.tabId === session.autoReloginTabId &&
@@ -787,7 +792,10 @@ async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
             try {
                 await autoDrawMall(mall, trigger, account?.id);
             } catch (e) {
-                console.error(`[LilithDraw][${mall}] Scheduled draw failed:`, e);
+                console.error(
+                    `[LilithDraw][${mall}][${account?.id || "legacy"}] Scheduled draw failed:`,
+                    e
+                );
             }
         }
     }
@@ -797,8 +805,8 @@ async function autoDrawMall(mall, trigger, accountId) {
     const profileKey = ask(mall, accountId, "draw");
     if (activeDraws.has(profileKey)) return;
     activeDraws.add(profileKey);
+    const checkedAt = new Date().toLocaleString();
     try {
-        const checkedAt = new Date().toLocaleString();
         await chrome.storage.local.set({
             [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Đang kiểm tra lượt quay..."],
         });
@@ -825,7 +833,7 @@ async function autoDrawMall(mall, trigger, accountId) {
             [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...log],
         });
     } catch (e) {
-        console.error(`[LilithDraw][${mall}] autoDrawMall error:`, e);
+        console.error(`[LilithDraw][${mall}][${accountId || "legacy"}] autoDrawMall error:`, e);
         await chrome.storage.local.set({
             [ask(mall, accountId, "drawLog")]: [
                 `${trigger} lúc ${checkedAt}`,

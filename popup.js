@@ -729,6 +729,32 @@ function renderAccountRows(mall) {
         heading.className = "saved-account-heading";
         const title = document.createElement("strong");
         title.textContent = `Tài khoản ${index + 1}`;
+        const actions = document.createElement("div");
+        actions.className = "saved-account-actions";
+        const body = document.createElement("div");
+        body.className = "saved-account-body";
+        body.id = `savedAccountBody-${mall}-${account.id}`;
+        const disclosure = document.createElement("button");
+        disclosure.className = "btn-util account-disclosure-btn";
+        disclosure.type = "button";
+        disclosure.setAttribute("aria-expanded", "true");
+        disclosure.setAttribute("aria-controls", body.id);
+        disclosure.setAttribute("aria-label", `Thu nhỏ Tài khoản ${index + 1}`);
+        disclosure.title = `Thu nhỏ Tài khoản ${index + 1}`;
+        const disclosureIcon = document.createElement("span");
+        disclosureIcon.className = "account-disclosure-icon";
+        disclosureIcon.setAttribute("aria-hidden", "true");
+        disclosure.appendChild(disclosureIcon);
+        disclosure.addEventListener("click", () => {
+            const expanded = disclosure.getAttribute("aria-expanded") !== "true";
+            disclosure.setAttribute("aria-expanded", String(expanded));
+            disclosure.setAttribute(
+                "aria-label",
+                `${expanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`
+            );
+            disclosure.title = `${expanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`;
+            body.hidden = !expanded;
+        });
         const remove = document.createElement("button");
         remove.className = "btn-util remove-account-btn";
         remove.type = "button";
@@ -740,7 +766,8 @@ function renderAccountRows(mall) {
             renderAccountRows(mall);
             void renderActiveAccountPicker(getSelectedMall());
         });
-        heading.append(title, remove);
+        actions.append(disclosure, remove);
+        heading.append(title, actions);
 
         const username = document.createElement("label");
         username.className = "login-field";
@@ -764,7 +791,8 @@ function renderAccountRows(mall) {
         passwordInput.className = "account-password";
         passwordInput.value = account.password;
         password.append(passwordLabel, passwordInput);
-        row.append(heading, username, password);
+        body.append(username, password);
+        row.append(heading, body);
         container.appendChild(row);
     });
 }
