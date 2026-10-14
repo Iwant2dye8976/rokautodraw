@@ -8,7 +8,6 @@
     "scripting",
     "activeTab",
     "webRequest",
-    "webRequestAuthProvider",
     "alarms",
     "notifications",
     "clipboardWrite"

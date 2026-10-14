@@ -4,42 +4,132 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="popup.css" />
-    <title>Lilith Auto</title>
+    <title>ROK Weekly Auto</title>
   </head>
 
   <body>
-    <nav class="g-nav">
+    <!-- Top Navigation Header -->
+    <header class="g-nav">
       <div class="g-nav-main">
-        <span class="g-nav-brand">ROK Weekly Auto</span>
-        <div class="status-pill">
+        <div class="brand-group">
+          <span class="g-nav-brand">ROK Weekly Auto</span>
+        </div>
+        <div class="status-pill" role="status" aria-live="polite">
           <span class="status-dot" id="statusDot"></span>
           <span id="status">Chưa có token</span>
         </div>
       </div>
       <time class="utc-clock" id="utcClock" aria-label="Giờ UTC">UTC --:--:--</time>
-    </nav>
-    <div id="main">
-      <section class="card glass additional-settings" aria-labelledby="additionalSettingsTitle">
+    </header>
+
+    <main id="main">
+      <!-- 1. Primary Action Card -->
+      <section class="card action-card" aria-label="Thao tác chính">
+        <div class="card-head">
+          <div class="eyebrow-row">
+            <span class="eyebrow">Cửa hàng</span>
+            <div class="segmented-control" role="radiogroup" aria-label="Chọn cửa hàng">
+              <label class="segmented-item">
+                <input type="radio" name="store" value="plutomall" checked />
+                <span>Plutomall</span>
+              </label>
+              <label class="segmented-item">
+                <input type="radio" name="store" value="lilithstore" />
+                <span>Lilith Store</span>
+              </label>
+            </div>
+          </div>
+          <div class="account-picker">
+            <label for="activeAccountSelect" class="input-label">Tài khoản</label>
+            <div class="select-wrapper">
+              <select id="activeAccountSelect"></select>
+              <span class="select-arrow" aria-hidden="true">▾</span>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="btn-row">
+            <button class="btn-util" id="captureBtn" type="button">
+              <span>Lấy Token</span>
+            </button>
+            <button class="btn-util" id="refreshCharsBtn" type="button">
+              <span>Làm mới</span>
+            </button>
+          </div>
+          <div class="btn-row hero-action-row">
+            <button class="btn-pill" id="drawNowBtn" type="button">Quay thưởng ngay</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Characters Card -->
+      <section class="card characters-card" aria-label="Danh sách nhân vật">
+        <div class="card-head">
+          <div class="eyebrow-row">
+            <span class="eyebrow">Nhân vật</span>
+            <span class="draws-remaining" id="drawsRemaining">- lượt còn lại</span>
+          </div>
+          <div class="char-search-wrap">
+            <span class="char-search-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="6.5" cy="6.5" r="4.5" />
+                <path d="M10 10l4 4" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              id="charSearchInput"
+              class="char-search-input"
+              placeholder="Tìm theo tên, ID hoặc server…"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Tìm kiếm nhân vật"
+            />
+            <button
+              type="button"
+              id="clearCharSearchBtn"
+              class="char-search-clear"
+              aria-label="Xóa tìm kiếm"
+              title="Xóa tìm kiếm"
+              hidden
+            >×</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="char-list-inner" id="charList">
+            <div class="char-row char-initial-state">
+              <span class="badge badge-warn">Chưa có token</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Additional Settings Collapsible Card -->
+      <section class="card additional-settings" aria-labelledby="additionalSettingsTitle">
         <div class="card-head additional-settings-head">
-          <h2 class="eyebrow" id="additionalSettingsTitle">Cài đặt thêm</h2>
+          <span class="eyebrow" id="additionalSettingsTitle">Cài đặt mở rộng</span>
           <button
             class="settings-disclosure"
             id="additionalSettingsDisclosure"
             type="button"
-            aria-label="Mở rộng Cài đặt thêm"
+            aria-label="Mở rộng Cài đặt mở rộng"
             aria-expanded="false"
             aria-controls="additionalSettingsBody"
           >
-            <span class="disclosure-icon" aria-hidden="true"></span>
+            <svg class="disclosure-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3.5 6l4.5 4.5 4.5-4.5" />
+            </svg>
           </button>
         </div>
         <div class="card-body additional-settings-body" id="additionalSettingsBody" hidden>
+          <!-- Auto Check Section -->
           <section class="settings-section" aria-labelledby="autoCheckTitle">
             <div class="settings-section-head">
               <h3 class="settings-section-title" id="autoCheckTitle">Auto kiểm tra</h3>
-              <label class="auto-relogin-toggle" for="autoCheckEnabled">
-                <span class="settings-toggle-label">Bật</span>
-                <input id="autoCheckEnabled" type="checkbox" />
+              <label class="switch-toggle" for="autoCheckEnabled">
+                <span class="settings-toggle-label" id="autoCheckToggleLabel">Bật</span>
+                <input id="autoCheckEnabled" type="checkbox" role="switch" />
+                <span class="switch-track" aria-hidden="true"></span>
               </label>
             </div>
             <label class="login-field auto-check-interval">
@@ -60,12 +150,14 @@
             ></div>
           </section>
 
+          <!-- Auto Relogin Section -->
           <section class="settings-section" aria-labelledby="autoReloginTitle">
             <div class="settings-section-head">
               <h3 class="settings-section-title" id="autoReloginTitle">Auto đăng nhập lại</h3>
-              <label class="auto-relogin-toggle" for="autoReloginEnabled">
-                <span class="settings-toggle-label">Bật</span>
-                <input id="autoReloginEnabled" type="checkbox" />
+              <label class="switch-toggle" for="autoReloginEnabled">
+                <span class="settings-toggle-label" id="autoReloginToggleLabel">Bật</span>
+                <input id="autoReloginEnabled" type="checkbox" role="switch" />
+                <span class="switch-track" aria-hidden="true"></span>
               </label>
             </div>
             <div class="settings-section-content" id="autoReloginSettings">
@@ -128,10 +220,10 @@
                 Tự động kiểm tra sẽ xử lý tuần tự các tài khoản đã lưu.
               </p>
               <div class="btn-row login-actions">
-                <button class="btn-util" id="saveLoginBtn" type="button">
+                <button class="btn-util btn-primary-outline" id="saveLoginBtn" type="button">
                   Lưu thông tin
                 </button>
-                <button class="btn-util" id="clearLoginBtn" type="button">
+                <button class="btn-util btn-destructive-subtle" id="clearLoginBtn" type="button">
                   Xóa tất cả tài khoản
                 </button>
               </div>
@@ -162,6 +254,7 @@
             </div>
           </section>
 
+          <!-- Export / Import Config Section -->
           <section class="settings-section" aria-labelledby="configTitle">
             <h3 class="settings-section-title" id="configTitle">Xuất / nhập cấu hình</h3>
             <p class="login-note config-warning">
@@ -186,27 +279,27 @@
             <div class="config-options" aria-label="Chọn cài đặt cần xuất">
               <label>
                 <input type="checkbox" value="autoReloginEnabled" checked />
-                Auto đăng nhập lại
+                <span>Auto đăng nhập lại</span>
               </label>
               <label>
                 <input type="checkbox" value="autoCheckIntervalMinutes" checked />
-                Thời gian Auto kiểm tra
+                <span>Thời gian Auto kiểm tra</span>
               </label>
               <label>
                 <input type="checkbox" value="autoCheckEnabled" checked />
-                Bật Auto kiểm tra
+                <span>Bật Auto kiểm tra</span>
               </label>
               <label>
                 <input type="checkbox" value="storeAccounts" />
-                Tài khoản và mật khẩu cửa hàng
+                <span>Tài khoản và mật khẩu cửa hàng</span>
               </label>
               <label>
                 <input type="checkbox" value="favoriteRoleIds" />
-                Nhân vật yêu thích
+                <span>Nhân vật yêu thích</span>
               </label>
               <label>
                 <input type="checkbox" value="tokens" />
-                Token
+                <span>Token</span>
               </label>
             </div>
             <div class="btn-row config-file-actions">
@@ -227,6 +320,7 @@
             ></div>
           </section>
 
+          <!-- Token Section -->
           <section class="settings-section token-section" aria-labelledby="tokenTitle">
             <div class="settings-section-head">
               <h3 class="settings-section-title" id="tokenTitle">Token</h3>
@@ -253,60 +347,12 @@
         </div>
       </section>
 
-      <div class="card glass action-card">
-        <div class="card-head">
-          <div class="eyebrow-row">
-            <div class="eyebrow">Thao tác</div>
-            <div class="radio-group">
-              <label class="radio-pill">
-                <input type="radio" name="store" value="plutomall" checked />
-                <span>Plutomall</span>
-              </label>
-              <label class="radio-pill">
-                <input type="radio" name="store" value="lilithstore" />
-                <span>Lilith Store</span>
-              </label>
-            </div>
-          </div>
-          <label class="account-picker">
-            <span>Tài khoản</span>
-            <select id="activeAccountSelect"></select>
-          </label>
-        </div>
-        <div class="card-body">
-          <div class="btn-row">
-            <button class="btn-util" id="captureBtn">🔑 Lấy Token</button>
-            <button class="btn-util" id="refreshCharsBtn">↺ Làm mới</button>
-          </div>
-          <div class="btn-row">
-            <button class="btn-pill" id="drawNowBtn">✦ Quay thưởng ngay</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card glass characters-card">
-        <div class="card-head">
-          <div class="eyebrow-row">
-            <div class="eyebrow">Nhân vật</div>
-            <span class="draws-remaining" id="drawsRemaining"
-              >— lượt còn lại</span
-            >
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="char-list-inner" id="charList">
-            <div class="char-row">
-              <span class="badge badge-warn">Chưa có token</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="logWrap" style="display: none">
-        <div class="eyebrow" style="padding: 0 2px 6px">Nhật ký</div>
-        <div id="log"></div>
-      </div>
-    </div>
+      <!-- 4. Execution Log Console -->
+      <section id="logWrap" class="log-section" style="display: none" aria-label="Nhật ký hoạt động">
+        <div class="eyebrow log-title">Nhật ký</div>
+        <div id="log" role="region" aria-live="polite" tabindex="0"></div>
+      </section>
+    </main>
 
     <script src="popup.js"></script>
   </body>

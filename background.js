@@ -3,6 +3,28 @@ const activeDraws = new Set();
 const activeRelogins = new Set();
 const activeReloginRefreshes = new Set();
 const activeReloginAccountChecks = new Set();
+
+async function isSessionLocked(key, maxAgeMs = 5 * 60 * 1000) {
+    try {
+        const session = await chrome.storage.session.get(key);
+        const ts = session[key];
+        return Number.isFinite(ts) && (Date.now() - ts < maxAgeMs);
+    } catch {
+        return false;
+    }
+}
+
+async function setSessionLock(key, locked) {
+    try {
+        if (locked) {
+            await chrome.storage.session.set({ [key]: Date.now() });
+        } else {
+            await chrome.storage.session.remove(key);
+        }
+    } catch (e) {
+        console.warn(`[LilithDraw] Could not update session lock ${key}:`, e);
+    }
+}
 const LILITH_STORE_URL = "https://passport-global.lilith.com/login?client_id=gamepay_lglo&game_id=10043&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fstore.lilith.com&app_id=2104267&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Flilith.png&client_name=LiLith+Store&redirect_to=https://store.lilith.com/rok?tab=perks&login_way=S-A&locale=vi";
 const PLUTOMALL_RELOGIN_URL = "https://passport.pup.vn/login?client_id=gamepay_lglo&game_id=10043&subject=vn_gamota&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fwww.plutomall.com.vn&app_id=6626468&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Fexternal_app.png&client_name=%E1%BB%A8ng+d%E1%BB%A5ng+kh%C3%A1c&redirect_to=https%3A%2F%2Fwww.plutomall.com.vn%2Frok%2Fvn%3Ftab%3Dperks&login_way=S-A&locale=vi";
 const RELOGIN_ORIGINS = {
@@ -121,15 +143,26 @@ async function continueReloginSequence(expectedMall, expectedAccountId, failure)
 }
 
 function isExpiredTokenResponse(json, url) {
-    const code = Number(json?.code ?? json?.ret ?? json?.status);
-    if (code === 401 || code === 403) return true;
+    const rawCode = json?.code ?? json?.ret ?? json?.status;
+    if (rawCode !== undefined && rawCode !== null) {
+        const code = Number(rawCode);
+        if (code === 401 || code === 403) return true;
+    }
     const message = `${json?.msg ?? ""} ${json?.message ?? ""}`.toLowerCase();
     const hasExpiredTokenMessage =
         /token.{0,30}(expired|invalid|过期|失效|无效)|(?:expired|invalid|过期|失效|无效).{0,30}token|unauthori[sz]ed/.test(message);
-    const userRolesAreEmpty =
-        new URL(url).pathname.endsWith("/user-roles") &&
-        Array.isArray(json?.data?.list) &&
-        json.data.list.length === 0;
+    let userRolesAreEmpty = false;
+    try {
+        if (url) {
+            const parsedUrl = new URL(url);
+            userRolesAreEmpty =
+                parsedUrl.pathname.endsWith("/user-roles") &&
+                Array.isArray(json?.data?.list) &&
+                json.data.list.length === 0;
+        }
+    } catch {
+        // ignore malformed url
+    }
     return hasExpiredTokenMessage || userRolesAreEmpty;
 }
 
@@ -226,8 +259,10 @@ async function fetchJson(url, options = {}, accountId) {
 async function openReloginWindow(mall, accountId) {
     if (!STORE_CONFIG[mall]) return false;
     const reloginKey = `${mall}:${accountId || "default"}`;
-    if (activeRelogins.has(reloginKey)) return true;
+    const lockKey = `lock_relogin_${reloginKey}`;
+    if (activeRelogins.has(reloginKey) || (await isSessionLocked(lockKey, 3 * 60 * 1000))) return true;
     activeRelogins.add(reloginKey);
+    await setSessionLock(lockKey, true);
     try {
         const [settings, accounts] = await Promise.all([
             chrome.storage.local.get("autoReloginEnabled"),
@@ -333,6 +368,7 @@ async function openReloginWindow(mall, accountId) {
         return false;
     } finally {
         activeRelogins.delete(reloginKey);
+        await setSessionLock(lockKey, false);
     }
 }
 
@@ -803,8 +839,11 @@ async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
 
 async function autoDrawMall(mall, trigger, accountId) {
     const profileKey = ask(mall, accountId, "draw");
-    if (activeDraws.has(profileKey)) return;
+    const lockKey = `lock_draw_${profileKey}`;
+    if (activeDraws.has(profileKey) || (await isSessionLocked(lockKey, 5 * 60 * 1000))) return;
     activeDraws.add(profileKey);
+    await setSessionLock(lockKey, true);
+    await chrome.storage.local.set({ [ask(mall, accountId, "isDrawing")]: true });
     const checkedAt = new Date().toLocaleString();
     try {
         await chrome.storage.local.set({
@@ -828,7 +867,11 @@ async function autoDrawMall(mall, trigger, accountId) {
             });
             return;
         }
-        const log = await runDraws(token, mall, true, accountId);
+        const log = await runDraws(token, mall, true, accountId, async currentLog => {
+            await chrome.storage.local.set({
+                [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...currentLog],
+            });
+        });
         await chrome.storage.local.set({
             [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...log],
         });
@@ -842,6 +885,8 @@ async function autoDrawMall(mall, trigger, accountId) {
         });
     } finally {
         activeDraws.delete(profileKey);
+        await setSessionLock(lockKey, false);
+        await chrome.storage.local.set({ [ask(mall, accountId, "isDrawing")]: false });
     }
 }
 
@@ -966,8 +1011,10 @@ function getRoleDrawCount(manifest, mall) {
 
 async function getTotalDrawsLeft(token, roles, mall, accountId) {
     let total = 0;
-    for (const role of roles) {
-        const manifest = await getManifest(token, role, mall, accountId);
+    const manifests = await Promise.all(
+        roles.map(role => getManifest(token, role, mall, accountId))
+    );
+    for (const manifest of manifests) {
         total += getRoleDrawCount(manifest, mall);
     }
     const lastCheck = new Date().toLocaleString();
@@ -1005,55 +1052,86 @@ async function drawOnce(token, role, mall, accountId) {
     );
 }
 
-async function runDraws(token, mall, forceRefreshRoles = false, accountId) {
+async function runDraws(token, mall, forceRefreshRoles = false, accountId, onProgress = null) {
     const startedAt = Date.now();
     const maxRuntimeMs = 4 * 60 * 1000;
     const log = [];
+    const reportProgress = async () => {
+        if (typeof onProgress === "function") {
+            try {
+                await onProgress(log);
+            } catch (err) {
+                console.warn("[LilithDraw] onProgress error:", err);
+            }
+        }
+    };
+
     let roles;
     try {
         roles = await getRoles(token, mall, forceRefreshRoles, accountId);
     } catch (e) {
         log.push(`Lỗi khi tải thông tin nhân vật: ${e.message}`);
+        await reportProgress();
         return log;
     }
 
     log.push(`Tìm thấy ${roles.length} nhân vật`);
+    await reportProgress();
     if (roles.length === 0) {
         log.push("Không tìm thấy nhân vật nào");
+        await reportProgress();
         return log;
     }
 
     for (const role of roles) {
         if (Date.now() - startedAt >= maxRuntimeMs) {
             log.push("Đã tạm dừng để tránh quá thời gian chạy; có thể bấm quay lại để tiếp tục.");
+            await reportProgress();
             return log;
         }
         try {
             const manifest = await getManifest(token, role, mall, accountId);
-            const drawCount = getRoleDrawCount(manifest, mall);
+            let drawCount = getRoleDrawCount(manifest, mall);
             if (drawCount > 0) {
-                const result = await drawOnce(token, role, mall, accountId);
-                const rewardId = result?.data?.rewardId;
-                const reward = REWARDS[rewardId] || result?.data?.reward ||
-                    (rewardId ? `Phần thưởng ${rewardId}` : null);
-                if (!reward) throw new Error(result?.msg || "Phản hồi quay thưởng thiếu thông tin phần thưởng");
-                log.push(`[${role.name}] x1 ${reward}`);
+                while (drawCount > 0) {
+                    if (Date.now() - startedAt >= maxRuntimeMs) {
+                        log.push("Đã tạm dừng để tránh quá thời gian chạy; có thể bấm quay lại để tiếp tục.");
+                        await reportProgress();
+                        return log;
+                    }
+                    const result = await drawOnce(token, role, mall, accountId);
+                    const rewardId = result?.data?.rewardId;
+                    const reward = REWARDS[rewardId] || result?.data?.reward ||
+                        (rewardId ? `Phần thưởng ${rewardId}` : null);
+                    if (!reward) throw new Error(result?.msg || "Phản hồi quay thưởng thiếu thông tin phần thưởng");
+                    log.push(`[${role.name}] x1 ${reward}`);
+                    drawCount--;
+                    await reportProgress();
+                    if (drawCount > 0) {
+                        await new Promise(r => setTimeout(r, 300));
+                    }
+                }
             } else {
                 log.push(`[${role.name}] Không còn lượt quay nào`);
+                await reportProgress();
             }
         } catch (e) {
             log.push(`[${role.name}] Lỗi: ${e.message}`);
+            await reportProgress();
         }
         await new Promise(r => setTimeout(r, 500));
     }
 
     log.push("Done!");
+    await reportProgress();
     return log;
 }
 
 
-async function getDrawHistory(token, roleId, mall, accountId) {
-    const character = await getCharacterById(token, roleId, mall, accountId);
+async function getDrawHistory(token, roleOrRoleId, mall, accountId) {
+    const character = (roleOrRoleId && typeof roleOrRoleId === "object")
+        ? roleOrRoleId
+        : await getCharacterById(token, roleOrRoleId, mall, accountId);
     if (!character) throw new Error("Không tìm thấy thông tin nhân vật");
 
     const identifiers = getAppIdentifiers(await getStoreData(mall, accountId));
@@ -1349,30 +1427,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.action === "drawNow") {
+        let responseSent = false;
         (async () => {
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
             const accountId = msg.accountId;
             const profileKey = ask(mall, accountId, "draw");
-            if (activeDraws.has(profileKey)) {
+            const lockKey = `lock_draw_${profileKey}`;
+            if (activeDraws.has(profileKey) || (await isSessionLocked(lockKey, 5 * 60 * 1000))) {
                 sendResponse({ error: "Đang có lượt quay chạy cho cửa hàng này" });
+                responseSent = true;
                 return;
             }
             activeDraws.add(profileKey);
-            let responseSent = false;
+            await setSessionLock(lockKey, true);
+            await chrome.storage.local.set({ [ask(mall, accountId, "isDrawing")]: true });
             try {
                 const token = await getToken(mall, accountId);
                 if (!token) {
                     sendResponse({ error: "Không có token trong bộ nhớ. Vui lòng mở trang quay thưởng trước." });
+                    responseSent = true;
                     return;
                 }
                 await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: ["Bắt đầu quay thưởng..."] });
                 sendResponse({ ok: true });
                 responseSent = true;
-                const log = await runDraws(token, mall, false, accountId);
+                const log = await runDraws(token, mall, false, accountId, async currentLog => {
+                    await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: [...currentLog] });
+                });
                 await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: log });
             } catch (error) {
                 if (!responseSent) {
                     sendResponse({ error: error.message });
+                    responseSent = true;
                 } else {
                     try {
                         await chrome.storage.local.set({
@@ -1384,8 +1470,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 }
             } finally {
                 activeDraws.delete(profileKey);
+                await setSessionLock(lockKey, false);
+                await chrome.storage.local.set({ [ask(mall, accountId, "isDrawing")]: false });
             }
-        })().catch(error => sendResponse({ error: error.message }));
+        })().catch(error => {
+            if (!responseSent) {
+                sendResponse({ error: error.message });
+            }
+        });
         return true;
     }
 
@@ -1396,10 +1488,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const token = await getToken(mall, accountId);
             if (!token) { sendResponse({ error: "Không có token" }); return; }
             try {
-                const [history, character] = await Promise.all([
-                    getDrawHistory(token, msg.roleId, mall, accountId),
-                    getCharacterById(token, msg.roleId, mall, accountId),
-                ]);
+                const character = await getCharacterById(token, msg.roleId, mall, accountId);
+                if (!character) throw new Error("Không tìm thấy thông tin nhân vật");
+                const history = await getDrawHistory(token, character, mall, accountId);
                 sendResponse({ history, character });
             } catch (e) {
                 sendResponse({ error: e.message });
@@ -1424,7 +1515,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 type: "basic",
                 iconUrl: "images/icons/icon48.png",
                 title: "Auto Survey",
-                message: `Message: ${json?.msg ?? "Không có thông báo"}, Code: ${json?.ret ?? "—"}`,
+                message: `Message: ${json?.msg ?? "Không có thông báo"}, Code: ${json?.ret ?? "-"}`,
                 requireInteraction: false
             });
             sendResponse({ ok: true });

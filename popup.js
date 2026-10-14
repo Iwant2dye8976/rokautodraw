@@ -6,13 +6,26 @@ const logWrap = document.getElementById("logWrap");
 const tokenBox = document.getElementById("tokenBox");
 const tokenCopyStatus = document.getElementById("tokenCopyStatus");
 const charList = document.getElementById("charList");
+const charSearchInput = document.getElementById("charSearchInput");
+const clearCharSearchBtn = document.getElementById("clearCharSearchBtn");
 const totalDrawsEl = document.getElementById("drawsRemaining");
 const autoCheckCheckbox = document.getElementById("autoCheckEnabled");
+const autoCheckToggleLabel = document.getElementById("autoCheckToggleLabel");
 const autoCheckIntervalInput = document.getElementById("autoCheckIntervalMinutes");
 const autoCheckSettingsStatus = document.getElementById("autoCheckSettingsStatus");
 const autoReloginCheckbox = document.getElementById("autoReloginEnabled");
+const autoReloginToggleLabel = document.getElementById("autoReloginToggleLabel");
 const loginSettingsStatus = document.getElementById("loginSettingsStatus");
 const configSettingsStatus = document.getElementById("configSettingsStatus");
+
+function updateSwitchToggleLabels() {
+    if (autoCheckToggleLabel && autoCheckCheckbox) {
+        autoCheckToggleLabel.textContent = autoCheckCheckbox.checked ? "Bật" : "Tắt";
+    }
+    if (autoReloginToggleLabel && autoReloginCheckbox) {
+        autoReloginToggleLabel.textContent = autoReloginCheckbox.checked ? "Bật" : "Tắt";
+    }
+}
 const importConfigFile = document.getElementById("importConfigFile");
 const additionalSettingsDisclosure = document.getElementById("additionalSettingsDisclosure");
 const additionalSettingsBody = document.getElementById("additionalSettingsBody");
@@ -69,10 +82,11 @@ function updateUtcClock() {
 
 function showAccountViewLoading() {
     accountViewVersion++;
+    cachedRoles = [];
     setStatus("Đang tải dữ liệu…");
     setCharsLoading();
     tokenBox.value = "";
-    totalDrawsEl.textContent = "— lượt còn lại";
+    totalDrawsEl.textContent = "- lượt còn lại";
     renderDrawLog([]);
 }
 
@@ -98,6 +112,10 @@ let charRenderVersion = 0;
 let accountViewVersion = 0;
 let accountPickerVersion = 0;
 let accountsByMall = { plutomall: [], lilithstore: [] };
+let cachedRoles = [];
+let cachedMall = null;
+let cachedAccountId = null;
+const accountExpandedState = new Map();
 const activeAccountSelect = document.getElementById("activeAccountSelect");
 
 function getSelectedAccountId() {
@@ -200,7 +218,52 @@ async function detectMall() {
     return mall;
 }
 
+function normalizeSearchText(str) {
+    return String(str ?? "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function matchesSearch(role, rawQuery) {
+    const q = rawQuery.trim().toLowerCase();
+    if (!q) return true;
+    const qNorm = normalizeSearchText(q);
+    const name = String(role.name ?? "").toLowerCase();
+    const id = String(role.roleId ?? "").toLowerCase();
+    const svr = String(role.svrId ?? "").toLowerCase();
+    return name.includes(q) || id.includes(q) || svr.includes(q) ||
+           normalizeSearchText(name).includes(qNorm) ||
+           normalizeSearchText(svr).includes(qNorm);
+}
+
+if (charSearchInput) {
+    charSearchInput.addEventListener("input", () => {
+        const hasText = Boolean(charSearchInput.value);
+        if (clearCharSearchBtn) clearCharSearchBtn.hidden = !hasText;
+        if (cachedRoles?.length > 0) {
+            renderChars(cachedRoles, cachedMall || getSelectedMall(), cachedAccountId || getSelectedAccountId());
+        }
+    });
+}
+
+if (clearCharSearchBtn) {
+    clearCharSearchBtn.addEventListener("click", () => {
+        if (charSearchInput) {
+            charSearchInput.value = "";
+            charSearchInput.focus();
+        }
+        clearCharSearchBtn.hidden = true;
+        if (cachedRoles?.length > 0) {
+            renderChars(cachedRoles, cachedMall || getSelectedMall(), cachedAccountId || getSelectedAccountId());
+        }
+    });
+}
+
 async function renderChars(roles, mall, accountId = getSelectedAccountId(), viewVersion = accountViewVersion) {
+    cachedRoles = Array.isArray(roles) ? roles : [];
+    cachedMall = mall;
+    cachedAccountId = accountId;
     const renderVersion = ++charRenderVersion;
     const favoritesKey = accountStorageKey(mall, accountId, "favoriteRoleIds");
     let favoriteOrder;
@@ -234,7 +297,22 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
             ),
         ...roles.filter(role => !favoritePositions.has(String(role.roleId ?? "")))
     ];
-    for (const role of sortedRoles) {
+
+    const searchVal = charSearchInput?.value.trim() || "";
+    const displayRoles = searchVal
+        ? sortedRoles.filter(role => matchesSearch(role, searchVal))
+        : sortedRoles;
+
+    if (displayRoles.length === 0) {
+        if (sortedRoles.length === 0) {
+            setCharsEmpty("Không tìm thấy nhân vật");
+        } else {
+            setCharsEmpty("Không tìm thấy nhân vật phù hợp");
+        }
+        return;
+    }
+
+    for (const role of displayRoles) {
         const div = document.createElement("div");
         div.className = "char-row";
         const avatarWrap = document.createElement("span");
@@ -347,7 +425,7 @@ async function renderCache(mall) {
             setStatus("Chưa có dữ liệu, hãy Capture Token");
             setCharsEmpty("Chưa có dữ liệu, hãy Capture Token");
             tokenBox.value = "";
-            totalDrawsEl.textContent = "— lượt còn lại";
+            totalDrawsEl.textContent = "- lượt còn lại";
             renderDrawLog(drawLog);
             return;
         }
@@ -367,9 +445,18 @@ async function renderCache(mall) {
 
         renderDrawLog(drawLog);
 
+        const isDrawingKey = accountStorageKey(mall, accountId, "isDrawing");
+        const { [isDrawingKey]: isDrawing } = await chrome.storage.local.get(isDrawingKey);
+        const drawBtn = document.getElementById("drawNowBtn");
+        if (drawBtn) {
+            drawBtn.disabled = !!isDrawing;
+            drawBtn.textContent = isDrawing ? "Đang quay…" : "Quay thưởng ngay";
+        }
+
         if (res.roles?.length > 0) {
-            renderChars(res.roles, mall, accountId, viewVersion);
+            await renderChars(res.roles, mall, accountId, viewVersion);
         } else {
+            cachedRoles = [];
             setCharsEmpty("Nhấn Làm mới để tải nhân vật");
         }
     } catch (err) {
@@ -429,8 +516,9 @@ async function fetchAndRender(mall) {
 
             const roles = Array.isArray(res.roles) ? res.roles : [];
             if (roles.length > 0) {
-                renderChars(roles, m, accountId, viewVersion);
+                await renderChars(roles, m, accountId, viewVersion);
             } else {
+                cachedRoles = [];
                 setCharsEmpty("Không tìm thấy nhân vật");
             }
 
@@ -529,7 +617,7 @@ function showHistory(character, history) {
 
         const reward = document.createElement("span");
         reward.className = "h-reward";
-        reward.textContent = `${item.rewardName ?? "—"} x${item.num || 1}`;
+        reward.textContent = `${item.rewardName ?? "-"} x${item.num || 1}`;
         row.append(number, image, reward);
 
         const timestamp = Number(item.timestamp);
@@ -648,7 +736,7 @@ additionalSettingsDisclosure.addEventListener("click", () => {
     additionalSettingsDisclosure.setAttribute("aria-expanded", String(expanded));
     additionalSettingsDisclosure.setAttribute(
         "aria-label",
-        `${expanded ? "Thu nhỏ" : "Mở rộng"} Cài đặt thêm`
+        `${expanded ? "Thu nhỏ" : "Mở rộng"} Cài đặt mở rộng`
     );
 });
 
@@ -681,6 +769,7 @@ copyTokenButton.addEventListener("click", async () => {
 });
 
 autoCheckCheckbox.addEventListener("change", async () => {
+    updateSwitchToggleLabels();
     try {
         await chrome.storage.local.set({ autoCheckEnabled: autoCheckCheckbox.checked });
         autoCheckSettingsStatus.textContent = autoCheckCheckbox.checked
@@ -688,6 +777,7 @@ autoCheckCheckbox.addEventListener("change", async () => {
             : "Đã tắt kiểm tra tự động.";
     } catch (error) {
         autoCheckCheckbox.checked = !autoCheckCheckbox.checked;
+        updateSwitchToggleLabels();
         autoCheckSettingsStatus.textContent = `Không thể cập nhật cài đặt: ${error.message}`;
     }
 });
@@ -728,23 +818,31 @@ function renderAccountRows(mall) {
         const heading = document.createElement("div");
         heading.className = "saved-account-heading";
         const title = document.createElement("strong");
-        title.textContent = `Tài khoản ${index + 1}`;
+        title.textContent = account.username
+            ? `Tài khoản ${index + 1} (${account.username})`
+            : `Tài khoản ${index + 1}`;
         const actions = document.createElement("div");
         actions.className = "saved-account-actions";
         const body = document.createElement("div");
         body.className = "saved-account-body";
         body.id = `savedAccountBody-${mall}-${account.id}`;
+
+        const isExpanded = accountExpandedState.has(account.id)
+            ? accountExpandedState.get(account.id)
+            : false;
+        body.hidden = !isExpanded;
+
         const disclosure = document.createElement("button");
         disclosure.className = "btn-util account-disclosure-btn";
         disclosure.type = "button";
-        disclosure.setAttribute("aria-expanded", "true");
+        disclosure.setAttribute("aria-expanded", String(isExpanded));
         disclosure.setAttribute("aria-controls", body.id);
-        disclosure.setAttribute("aria-label", `Thu nhỏ Tài khoản ${index + 1}`);
-        disclosure.title = `Thu nhỏ Tài khoản ${index + 1}`;
-        const disclosureIcon = document.createElement("span");
-        disclosureIcon.className = "account-disclosure-icon";
-        disclosureIcon.setAttribute("aria-hidden", "true");
-        disclosure.appendChild(disclosureIcon);
+        disclosure.setAttribute(
+            "aria-label",
+            `${isExpanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`
+        );
+        disclosure.title = `${isExpanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`;
+        disclosure.innerHTML = `<svg class="disclosure-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6l4.5 4.5 4.5-4.5" /></svg>`;
         disclosure.addEventListener("click", () => {
             const expanded = disclosure.getAttribute("aria-expanded") !== "true";
             disclosure.setAttribute("aria-expanded", String(expanded));
@@ -754,6 +852,7 @@ function renderAccountRows(mall) {
             );
             disclosure.title = `${expanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`;
             body.hidden = !expanded;
+            accountExpandedState.set(account.id, expanded);
         });
         const remove = document.createElement("button");
         remove.className = "btn-util remove-account-btn";
@@ -762,6 +861,7 @@ function renderAccountRows(mall) {
         remove.title = "Xóa tài khoản";
         remove.setAttribute("aria-label", "Xóa tài khoản");
         remove.addEventListener("click", () => {
+            accountExpandedState.delete(account.id);
             accountsByMall[mall] = accountsByMall[mall].filter(item => item.id !== account.id);
             renderAccountRows(mall);
             void renderActiveAccountPicker(getSelectedMall());
@@ -779,18 +879,59 @@ function renderAccountRows(mall) {
         usernameInput.spellcheck = false;
         usernameInput.className = "account-username";
         usernameInput.value = account.username;
+        usernameInput.addEventListener("input", () => {
+            account.username = usernameInput.value.trim();
+            title.textContent = account.username
+                ? `Tài khoản ${index + 1} (${account.username})`
+                : `Tài khoản ${index + 1}`;
+        });
         username.append(usernameLabel, usernameInput);
 
-        const password = document.createElement("label");
-        password.className = "login-field";
+        const password = document.createElement("div");
+        password.className = "login-field password-field-wrap";
         const passwordLabel = document.createElement("span");
+        passwordLabel.className = "input-label";
         passwordLabel.textContent = "Mật khẩu";
+
+        const passwordInputGroup = document.createElement("div");
+        passwordInputGroup.className = "password-input-group";
+
         const passwordInput = document.createElement("input");
         passwordInput.type = "password";
         passwordInput.autocomplete = "current-password";
         passwordInput.className = "account-password";
         passwordInput.value = account.password;
-        password.append(passwordLabel, passwordInput);
+        passwordInput.spellcheck = false;
+        passwordInput.addEventListener("input", () => {
+            account.password = passwordInput.value;
+        });
+
+        const togglePasswordBtn = document.createElement("button");
+        togglePasswordBtn.type = "button";
+        togglePasswordBtn.className = "btn-toggle-password";
+        togglePasswordBtn.title = "Hiện mật khẩu";
+        togglePasswordBtn.setAttribute("aria-label", "Hiện mật khẩu");
+        togglePasswordBtn.setAttribute("aria-pressed", "false");
+
+        const eyeOpenSvg = `<svg class="eye-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 10s3.5-6 8.5-6 8.5 6 8.5 6-3.5 6-8.5 6-8.5-6-8.5-6z"/><circle cx="10" cy="10" r="2.5"/></svg>`;
+        const eyeClosedSvg = `<svg class="eye-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2l16 16"/><path d="M8.5 4.3A9.2 9.2 0 0 1 10 4c5 0 8.5 6 8.5 6a14.2 14.2 0 0 1-3.3 4.2"/><path d="M14.1 14.1A8.9 8.9 0 0 1 10 16c-5 0-8.5-6-8.5-6a14.5 14.5 0 0 1 4.5-4.5"/><path d="M8.2 8.2a2.5 2.5 0 0 0 3.6 3.6"/></svg>`;
+
+        togglePasswordBtn.innerHTML = eyeOpenSvg;
+
+        togglePasswordBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const isPassword = passwordInput.type === "password";
+            passwordInput.type = isPassword ? "text" : "password";
+            togglePasswordBtn.innerHTML = isPassword ? eyeClosedSvg : eyeOpenSvg;
+            const newLabel = isPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu";
+            togglePasswordBtn.title = newLabel;
+            togglePasswordBtn.setAttribute("aria-label", newLabel);
+            togglePasswordBtn.setAttribute("aria-pressed", String(isPassword));
+            passwordInput.focus();
+        });
+
+        passwordInputGroup.append(passwordInput, togglePasswordBtn);
+        password.append(passwordLabel, passwordInputGroup);
         body.append(username, password);
         row.append(heading, body);
         container.appendChild(row);
@@ -887,13 +1028,32 @@ async function loadSavedLoginCredentials() {
 for (const button of document.querySelectorAll("[data-add-account]")) {
     button.addEventListener("click", async () => {
         const mall = button.dataset.addAccount;
+
+        const currentDomAccounts = [...document.querySelectorAll(`#${mall}Accounts .saved-account`)];
+        currentDomAccounts.forEach(row => {
+            const acc = accountsByMall[mall].find(a => a.id === row.dataset.accountId);
+            if (acc) {
+                const u = row.querySelector(".account-username");
+                const p = row.querySelector(".account-password");
+                if (u) acc.username = u.value.trim();
+                if (p) acc.password = p.value;
+            }
+        });
+
+        accountsByMall[mall].forEach(existingAcc => {
+            accountExpandedState.set(existingAcc.id, false);
+        });
+
         const account = {
             id: crypto.randomUUID(),
             username: "",
             password: "",
         };
+        accountExpandedState.set(account.id, true);
         accountsByMall[mall].push(account);
+
         renderAccountRows(mall);
+
         const saved = await chrome.storage.local.get("activeAccountIds");
         const activeAccountIds = saved.activeAccountIds &&
             typeof saved.activeAccountIds === "object" &&
@@ -906,6 +1066,11 @@ for (const button of document.querySelectorAll("[data-add-account]")) {
             activeAccountIds,
         });
         await renderActiveAccountPicker(getSelectedMall());
+
+        const newRowInput = document.querySelector(
+            `#${mall}Accounts .saved-account[data-account-id="${account.id}"] .account-username`
+        );
+        if (newRowInput) newRowInput.focus();
     });
 }
 
@@ -987,9 +1152,9 @@ for (const button of document.querySelectorAll("[data-login-tab]")) {
 }
 
 autoReloginCheckbox.addEventListener("change", async () => {
+    updateSwitchToggleLabels();
     try {
         await persistLoginAccounts({ validate: false, saveAutoRelogin: true });
-        await chrome.storage.local.set({ autoReloginEnabled: autoReloginCheckbox.checked });
         if (!autoReloginCheckbox.checked) {
             setLoginSettingsStatus("Đã tắt tự đăng nhập. Thông tin đã lưu được giữ nguyên.");
         } else {
@@ -1006,6 +1171,7 @@ autoReloginCheckbox.addEventListener("change", async () => {
         }
     } catch (error) {
         autoReloginCheckbox.checked = !autoReloginCheckbox.checked;
+        updateSwitchToggleLabels();
         setLoginSettingsStatus(`Không thể cập nhật cài đặt: ${error.message}`);
     }
 });
@@ -1024,8 +1190,12 @@ document.getElementById("saveLoginBtn").addEventListener("click", async () => {
 });
 
 document.getElementById("clearLoginBtn").addEventListener("click", async () => {
+    if (!confirm("Bạn có chắc chắn muốn xóa toàn bộ tài khoản và thông tin đã lưu?")) {
+        return;
+    }
     try {
         autoReloginCheckbox.checked = false;
+        updateSwitchToggleLabels();
         await chrome.storage.local.set({ autoReloginEnabled: false });
         const data = await chrome.storage.local.get(null);
         const removeKeys = Object.keys(data).filter(key =>
@@ -1396,6 +1566,7 @@ importConfigFile.addEventListener("change", async () => {
         if (Object.prototype.hasOwnProperty.call(importedSettings, "autoReloginEnabled")) {
             autoReloginCheckbox.checked = importedSettings.autoReloginEnabled;
         }
+        updateSwitchToggleLabels();
         if (Object.prototype.hasOwnProperty.call(importedSettings, "storeAccounts")) {
             accountsByMall = importedSettings.storeAccounts;
             renderAccountRows("plutomall");
@@ -1416,6 +1587,14 @@ importConfigFile.addEventListener("change", async () => {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
+    if (changes.autoCheckEnabled) {
+        autoCheckCheckbox.checked = changes.autoCheckEnabled.newValue !== false;
+        updateSwitchToggleLabels();
+    }
+    if (changes.autoReloginEnabled) {
+        autoReloginCheckbox.checked = changes.autoReloginEnabled.newValue === true;
+        updateSwitchToggleLabels();
+    }
     if (changes.autoReloginStatus?.newValue) {
         setLoginSettingsStatus(changes.autoReloginStatus.newValue);
     }
@@ -1487,13 +1666,13 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
         if (chrome.runtime.lastError) {
             setStatus(chrome.runtime.lastError.message);
             btn.disabled = false;
-            btn.textContent = "✦ Quay thưởng ngay";
+            btn.textContent = "Quay thưởng ngay";
             return;
         }
         if (res?.error) {
             setStatus(res.error);
             btn.disabled = false;
-            btn.textContent = "✦ Quay thưởng ngay";
+            btn.textContent = "Quay thưởng ngay";
             return;
         }
 
@@ -1503,35 +1682,38 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
                 clearInterval(poll);
                 setStatus("Lượt quay không phản hồi; hãy làm mới trạng thái trước khi chạy lại");
                 btn.disabled = false;
-                btn.textContent = "✦ Quay thưởng ngay";
+                btn.textContent = "Quay thưởng ngay";
                 return;
             }
             let data;
+            const isDrawingKey = accountStorageKey(mall, accountId, "isDrawing");
             try {
-                data = await chrome.storage.local.get(drawLogKey);
+                data = await chrome.storage.local.get([drawLogKey, isDrawingKey]);
             } catch (error) {
                 clearInterval(poll);
                 setStatus(`Không đọc được nhật ký: ${error.message}`);
                 btn.disabled = false;
-                btn.textContent = "✦ Quay thưởng ngay";
+                btn.textContent = "Quay thưởng ngay";
                 return;
             }
             const drawLog = data[drawLogKey];
             if (drawLog?.length > 0) {
                 logEl.textContent = drawLog.join("\n");
                 logEl.scrollTop = logEl.scrollHeight;
-                const lastLine = drawLog[drawLog.length - 1];
-                if (
-                    lastLine === "Done!" ||
-                    lastLine.startsWith("Lỗi") ||
-                    lastLine.startsWith("Đã tạm dừng") ||
-                    lastLine.includes("Không còn")
-                ) {
-                    clearInterval(poll);
-                    btn.disabled = false;
-                    btn.textContent = "✦ Quay thưởng ngay";
-                    fetchAndRender(mall).catch(() => {});
-                }
+            }
+            const isDrawing = data[isDrawingKey];
+            const lastLine = drawLog?.[drawLog.length - 1] || "";
+            const isFinished = isDrawing === false ||
+                lastLine === "Done!" ||
+                lastLine.startsWith("Lỗi") ||
+                lastLine === "Không tìm thấy nhân vật nào" ||
+                lastLine.startsWith("Đã tạm dừng");
+
+            if (isFinished && (Date.now() - pollStartedAt > 1500 || lastLine === "Done!")) {
+                clearInterval(poll);
+                btn.disabled = false;
+                btn.textContent = "Quay thưởng ngay";
+                fetchAndRender(mall).catch(() => {});
             }
         }, 1000);
     });
@@ -1555,6 +1737,7 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             ? String(settings.autoCheckIntervalMinutes)
             : "60";
         autoReloginCheckbox.checked = settings.autoReloginEnabled === true;
+        updateSwitchToggleLabels();
         if (settings.autoReloginStatus) setLoginSettingsStatus(settings.autoReloginStatus);
         await loadSavedLoginCredentials();
 
