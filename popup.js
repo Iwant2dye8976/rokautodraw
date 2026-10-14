@@ -4,17 +4,29 @@ const utcClockEl = document.getElementById("utcClock");
 const logEl = document.getElementById("log");
 const logWrap = document.getElementById("logWrap");
 const tokenBox = document.getElementById("tokenBox");
+const tokenCopyStatus = document.getElementById("tokenCopyStatus");
 const charList = document.getElementById("charList");
 const totalDrawsEl = document.getElementById("drawsRemaining");
 const autoCheckCheckbox = document.getElementById("autoCheckEnabled");
-const autoCheckSettings = document.getElementById("autoCheckSettings");
-const autoCheckDisclosure = document.getElementById("autoCheckDisclosure");
 const autoCheckIntervalInput = document.getElementById("autoCheckIntervalMinutes");
 const autoCheckSettingsStatus = document.getElementById("autoCheckSettingsStatus");
 const autoReloginCheckbox = document.getElementById("autoReloginEnabled");
-const autoReloginSettings = document.getElementById("autoReloginSettings");
-const autoReloginDisclosure = document.getElementById("autoReloginDisclosure");
 const loginSettingsStatus = document.getElementById("loginSettingsStatus");
+const configSettingsStatus = document.getElementById("configSettingsStatus");
+const importConfigFile = document.getElementById("importConfigFile");
+const additionalSettingsDisclosure = document.getElementById("additionalSettingsDisclosure");
+const additionalSettingsBody = document.getElementById("additionalSettingsBody");
+const CONFIG_FORMAT = "rok-weekly-auto-config";
+const CONFIG_VERSION = 1;
+const CONFIG_SETTING_VALIDATORS = {
+    autoReloginEnabled: value => typeof value === "boolean",
+    autoCheckIntervalMinutes: value => Number.isSafeInteger(value) && value >= 1,
+    autoCheckEnabled: value => typeof value === "boolean",
+    plutomallUsername: value => typeof value === "string",
+    plutomallPassword: value => typeof value === "string",
+    lilithstoreUsername: value => typeof value === "string",
+    lilithstorePassword: value => typeof value === "string",
+};
 const utcClockFormatter = new Intl.DateTimeFormat("en-GB", {
     timeZone: "UTC",
     hour: "2-digit",
@@ -24,7 +36,7 @@ const utcClockFormatter = new Intl.DateTimeFormat("en-GB", {
 });
 
 function updateUtcClock() {
-    utcClockEl.textContent = `UTC ${utcClockFormatter.format(new Date())} - ${new Date().toLocaleDateString()}`;
+    utcClockEl.textContent = `UTC ${utcClockFormatter.format(new Date())}`;
 }
 
 updateUtcClock();
@@ -539,21 +551,45 @@ function setLoginSettingsStatus(message) {
     loginSettingsStatus.textContent = message;
 }
 
-function setAutoCheckExpanded(expanded) {
-    autoCheckSettings.hidden = !expanded;
-    autoCheckDisclosure.setAttribute("aria-expanded", String(expanded));
-    autoCheckDisclosure.setAttribute(
+additionalSettingsDisclosure.addEventListener("click", () => {
+    const expanded = additionalSettingsDisclosure.getAttribute("aria-expanded") !== "true";
+    additionalSettingsBody.hidden = !expanded;
+    additionalSettingsDisclosure.setAttribute("aria-expanded", String(expanded));
+    additionalSettingsDisclosure.setAttribute(
         "aria-label",
-        `${expanded ? "Thu nhỏ" : "Mở rộng"} cài đặt Auto kiểm tra`
+        `${expanded ? "Thu nhỏ" : "Mở rộng"} Cài đặt thêm`
     );
-}
+});
 
-autoCheckDisclosure.addEventListener("click", () => {
-    setAutoCheckExpanded(autoCheckSettings.hidden);
+const copyTokenButton = document.getElementById("copyTokenBtn");
+copyTokenButton.addEventListener("click", async () => {
+    const token = tokenBox.value.trim();
+    if (!token) {
+        tokenCopyStatus.textContent = "Chưa có token để sao chép.";
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(token);
+        copyTokenButton.textContent = "✓";
+        copyTokenButton.title = "Đã sao chép";
+        copyTokenButton.setAttribute("aria-label", "Đã sao chép token");
+        tokenCopyStatus.textContent = "Đã sao chép token.";
+    } catch (error) {
+        console.error("Không thể sao chép token:", error);
+        copyTokenButton.textContent = "!";
+        copyTokenButton.title = "Không thể sao chép token";
+        copyTokenButton.setAttribute("aria-label", "Không thể sao chép token");
+        tokenCopyStatus.textContent = `Không thể sao chép token: ${error.message}`;
+    }
+    window.setTimeout(() => {
+        copyTokenButton.textContent = "⧉";
+        copyTokenButton.title = "Sao chép token";
+        copyTokenButton.setAttribute("aria-label", "Sao chép token");
+    }, 1500);
 });
 
 autoCheckCheckbox.addEventListener("change", async () => {
-    setAutoCheckExpanded(autoCheckCheckbox.checked);
     try {
         await chrome.storage.local.set({ autoCheckEnabled: autoCheckCheckbox.checked });
         autoCheckSettingsStatus.textContent = autoCheckCheckbox.checked
@@ -561,7 +597,6 @@ autoCheckCheckbox.addEventListener("change", async () => {
             : "Đã tắt kiểm tra tự động.";
     } catch (error) {
         autoCheckCheckbox.checked = !autoCheckCheckbox.checked;
-        setAutoCheckExpanded(autoCheckCheckbox.checked);
         autoCheckSettingsStatus.textContent = `Không thể cập nhật cài đặt: ${error.message}`;
     }
 });
@@ -580,15 +615,6 @@ autoCheckIntervalInput.addEventListener("change", async () => {
         autoCheckSettingsStatus.textContent = `Không thể lưu thời gian kiểm tra: ${error.message}`;
     }
 });
-
-function setAutoReloginExpanded(expanded) {
-    autoReloginSettings.hidden = !expanded;
-    autoReloginDisclosure.setAttribute("aria-expanded", String(expanded));
-    autoReloginDisclosure.setAttribute(
-        "aria-label",
-        `${expanded ? "Thu nhỏ" : "Mở rộng"} cài đặt Auto đăng nhập lại`
-    );
-}
 
 function selectLoginTab(mall) {
     for (const button of document.querySelectorAll("[data-login-tab]")) {
@@ -619,12 +645,7 @@ for (const button of document.querySelectorAll("[data-login-tab]")) {
     button.addEventListener("click", () => selectLoginTab(button.dataset.loginTab));
 }
 
-autoReloginDisclosure.addEventListener("click", () => {
-    setAutoReloginExpanded(autoReloginSettings.hidden);
-});
-
 autoReloginCheckbox.addEventListener("change", async () => {
-    setAutoReloginExpanded(autoReloginCheckbox.checked);
     try {
         const credentials = await loadSavedLoginCredentials();
         await chrome.storage.local.set({ autoReloginEnabled: autoReloginCheckbox.checked });
@@ -644,7 +665,6 @@ autoReloginCheckbox.addEventListener("change", async () => {
         }
     } catch (error) {
         autoReloginCheckbox.checked = !autoReloginCheckbox.checked;
-        setAutoReloginExpanded(autoReloginCheckbox.checked);
         setLoginSettingsStatus(`Không thể cập nhật cài đặt: ${error.message}`);
     }
 });
@@ -673,7 +693,6 @@ document.getElementById("saveLoginBtn").addEventListener("click", async () => {
 document.getElementById("clearLoginBtn").addEventListener("click", async () => {
     try {
         autoReloginCheckbox.checked = false;
-        setAutoReloginExpanded(false);
         await chrome.storage.local.set({ autoReloginEnabled: false });
         await chrome.storage.local.remove([
             "lilithstoreUsername",
@@ -687,7 +706,6 @@ document.getElementById("clearLoginBtn").addEventListener("click", async () => {
         try {
             const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
             autoReloginCheckbox.checked = autoReloginEnabled === true;
-            setAutoReloginExpanded(autoReloginCheckbox.checked);
         } catch (stateError) {
             console.error("Could not restore auto-relogin setting:", stateError);
         }
@@ -726,6 +744,161 @@ document.getElementById("testLilithReloginBtn").addEventListener("click", () => 
 
 document.getElementById("testPlutoReloginBtn").addEventListener("click", () => {
     testRelogin("plutomall");
+});
+
+const configSelectionCheckboxes = [
+    ...document.querySelectorAll(".config-options input[type='checkbox']"),
+];
+const toggleAllConfigButton = document.getElementById("toggleAllConfigBtn");
+const toggleAllConfigLabel = document.getElementById("toggleAllConfigLabel");
+const configSelectionCount = document.getElementById("configSelectionCount");
+
+function updateConfigSelectionButton() {
+    const allSelected = configSelectionCheckboxes.length > 0 &&
+        configSelectionCheckboxes.every(checkbox => checkbox.checked);
+    const selectedCount = configSelectionCheckboxes.filter(checkbox => checkbox.checked).length;
+    toggleAllConfigButton.classList.toggle("is-selected", allSelected);
+    toggleAllConfigLabel.textContent = allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả";
+    configSelectionCount.textContent =
+        `${selectedCount}/${configSelectionCheckboxes.length} được chọn`;
+    toggleAllConfigButton.setAttribute(
+        "aria-label",
+        allSelected ? "Bỏ chọn tất cả cài đặt" : "Chọn tất cả cài đặt"
+    );
+}
+
+toggleAllConfigButton.addEventListener("click", () => {
+    const allSelected = configSelectionCheckboxes.length > 0 &&
+        configSelectionCheckboxes.every(checkbox => checkbox.checked);
+    for (const checkbox of configSelectionCheckboxes) {
+        checkbox.checked = !allSelected;
+    }
+    updateConfigSelectionButton();
+});
+
+for (const checkbox of configSelectionCheckboxes) {
+    checkbox.addEventListener("change", updateConfigSelectionButton);
+}
+updateConfigSelectionButton();
+
+document.getElementById("exportConfigBtn").addEventListener("click", async () => {
+    const selectedKeys = [...document.querySelectorAll(".config-options input:checked")]
+        .map(input => input.value);
+    if (selectedKeys.length === 0) {
+        configSettingsStatus.textContent = "Hãy chọn ít nhất một cài đặt để xuất.";
+        return;
+    }
+
+    try {
+        const storedSettings = await chrome.storage.local.get(selectedKeys);
+        const currentSettings = {
+            autoReloginEnabled: autoReloginCheckbox.checked,
+            autoCheckIntervalMinutes: Number(autoCheckIntervalInput.value),
+            autoCheckEnabled: autoCheckCheckbox.checked,
+        };
+        const settings = {};
+        for (const key of selectedKeys) {
+            if (Object.prototype.hasOwnProperty.call(storedSettings, key)) {
+                settings[key] = storedSettings[key];
+            } else if (Object.prototype.hasOwnProperty.call(currentSettings, key)) {
+                settings[key] = currentSettings[key];
+            }
+        }
+        if (Object.keys(settings).length === 0) {
+            configSettingsStatus.textContent = "Không có cài đặt đã lưu nào trong các mục được chọn.";
+            return;
+        }
+        for (const [key, value] of Object.entries(settings)) {
+            if (!CONFIG_SETTING_VALIDATORS[key](value)) {
+                throw new Error(`Giá trị cài đặt ${key} không hợp lệ.`);
+            }
+        }
+
+        const config = {
+            format: CONFIG_FORMAT,
+            version: CONFIG_VERSION,
+            settings,
+        };
+        const blob = new Blob([JSON.stringify(config, null, 2)], {
+            type: "application/json",
+        });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = `rok-weekly-auto-config-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+        configSettingsStatus.textContent =
+            `Đã xuất ${Object.keys(settings).length} cài đặt.`;
+    } catch (error) {
+        configSettingsStatus.textContent = `Không thể xuất cấu hình: ${error.message}`;
+    }
+});
+
+document.getElementById("importConfigBtn").addEventListener("click", () => {
+    importConfigFile.click();
+});
+
+importConfigFile.addEventListener("change", async () => {
+    const file = importConfigFile.files[0];
+    if (!file) return;
+
+    try {
+        const config = JSON.parse(await file.text());
+        if (
+            !config ||
+            typeof config !== "object" ||
+            Array.isArray(config) ||
+            config.format !== CONFIG_FORMAT ||
+            config.version !== CONFIG_VERSION ||
+            !config.settings ||
+            typeof config.settings !== "object" ||
+            Array.isArray(config.settings)
+        ) {
+            throw new Error("File không đúng định dạng cấu hình được hỗ trợ.");
+        }
+
+        const entries = Object.entries(config.settings);
+        if (
+            entries.length === 0 ||
+            entries.some(([key, value]) =>
+                !Object.prototype.hasOwnProperty.call(CONFIG_SETTING_VALIDATORS, key) ||
+                !CONFIG_SETTING_VALIDATORS[key](value)
+            )
+        ) {
+            throw new Error("Cài đặt trong file không hợp lệ hoặc không được hỗ trợ.");
+        }
+
+        await chrome.storage.local.set(Object.fromEntries(entries));
+        const importedSettings = Object.fromEntries(entries);
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "autoCheckEnabled")) {
+            autoCheckCheckbox.checked = importedSettings.autoCheckEnabled;
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "autoCheckIntervalMinutes")) {
+            autoCheckIntervalInput.value = String(importedSettings.autoCheckIntervalMinutes);
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "autoReloginEnabled")) {
+            autoReloginCheckbox.checked = importedSettings.autoReloginEnabled;
+        }
+        for (const [key, inputId] of Object.entries({
+            plutomallUsername: "plutoUsername",
+            plutomallPassword: "plutoPassword",
+            lilithstoreUsername: "lilithUsername",
+            lilithstorePassword: "lilithPassword",
+        })) {
+            if (Object.prototype.hasOwnProperty.call(importedSettings, key)) {
+                document.getElementById(inputId).value = importedSettings[key];
+            }
+        }
+        configSettingsStatus.textContent =
+            `Đã nhập ${entries.length} cài đặt từ ${file.name}.`;
+    } catch (error) {
+        configSettingsStatus.textContent = `Không thể nhập cấu hình: ${error.message}`;
+    } finally {
+        importConfigFile.value = "";
+    }
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -844,9 +1017,7 @@ document.getElementById("drawNowBtn").addEventListener("click", () => {
             settings.autoCheckIntervalMinutes >= 1
             ? String(settings.autoCheckIntervalMinutes)
             : "60";
-        setAutoCheckExpanded(!autoCheckCheckbox.checked);
         autoReloginCheckbox.checked = settings.autoReloginEnabled === true;
-        setAutoReloginExpanded(!autoReloginCheckbox.checked);
         if (settings.autoReloginStatus) setLoginSettingsStatus(settings.autoReloginStatus);
         await loadSavedLoginCredentials();
 

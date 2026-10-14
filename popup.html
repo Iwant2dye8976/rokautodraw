@@ -19,178 +19,262 @@
       <time class="utc-clock" id="utcClock" aria-label="Giờ UTC">UTC --:--:--</time>
     </nav>
     <div id="main">
-      <div class="card glass">
-        <div class="card-head">
-          <div class="auto-relogin-header">
-            <label class="auto-relogin-toggle" for="autoCheckEnabled">
-              <span class="eyebrow">Auto kiểm tra</span>
-              <input id="autoCheckEnabled" type="checkbox" />
-            </label>
-            <button
-              class="auto-relogin-disclosure"
-              id="autoCheckDisclosure"
-              type="button"
-              aria-label="Mở rộng cài đặt Auto kiểm tra"
-              aria-expanded="false"
-              aria-controls="autoCheckSettings"
-            >
-              <span class="disclosure-icon" aria-hidden="true"></span>
-            </button>
-          </div>
-        </div>
-        <br>
-        <div class="card-body" id="autoCheckSettings" hidden>
-          <label class="login-field auto-check-interval">
-            <span>Thời gian giữa mỗi lần kiểm tra (phút)</span>
-            <input
-              id="autoCheckIntervalMinutes"
-              type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
-            />
-          </label>
-          <div
-            class="login-settings-status"
-            id="autoCheckSettingsStatus"
-            role="status"
-            aria-live="polite"
-          ></div>
-        </div>
-      </div>
-
-      <div class="card glass">
-        <div class="card-head">
-          <div class="auto-relogin-header">
-            <label class="auto-relogin-toggle" for="autoReloginEnabled">
-              <span class="eyebrow">Auto đăng nhập lại</span>
-              <input id="autoReloginEnabled" type="checkbox" />
-            </label>
-            <button
-              class="auto-relogin-disclosure"
-              id="autoReloginDisclosure"
-              type="button"
-              aria-label="Mở rộng cài đặt Auto đăng nhập lại"
-              aria-expanded="false"
-              aria-controls="autoReloginSettings"
-            >
-              <span class="disclosure-icon" aria-hidden="true"></span>
-            </button>
-          </div>
-          <br>
-        </div>
-        <div class="card-body" id="autoReloginSettings" hidden>
-          <div
-            class="login-tabs"
-            role="tablist"
-            aria-label="Cấu hình đăng nhập cửa hàng"
+      <section class="card glass additional-settings" aria-labelledby="additionalSettingsTitle">
+        <div class="card-head additional-settings-head">
+          <h2 class="eyebrow" id="additionalSettingsTitle">Cài đặt thêm</h2>
+          <button
+            class="settings-disclosure"
+            id="additionalSettingsDisclosure"
+            type="button"
+            aria-label="Mở rộng Cài đặt thêm"
+            aria-expanded="false"
+            aria-controls="additionalSettingsBody"
           >
-            <button
-              class="login-tab active"
-              id="loginTabPluto"
-              type="button"
-              role="tab"
-              aria-selected="true"
-              aria-controls="loginPanelPluto"
-              data-login-tab="plutomall"
-            >
-              Plutomall
-            </button>
-            <button
-              class="login-tab"
-              id="loginTabLilith"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="loginPanelLilith"
-              data-login-tab="lilithstore"
-            >
-              Lilith Store
-            </button>
-          </div>
-          <section
-            class="login-panel"
-            id="loginPanelLilith"
-            role="tabpanel"
-            aria-labelledby="loginTabLilith"
-            hidden
-          >
-            <label class="login-field">
-              <span>Tài khoản Lilith Store</span>
+            <span class="disclosure-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="card-body additional-settings-body" id="additionalSettingsBody" hidden>
+          <section class="settings-section" aria-labelledby="autoCheckTitle">
+            <div class="settings-section-head">
+              <h3 class="settings-section-title" id="autoCheckTitle">Auto kiểm tra</h3>
+              <label class="auto-relogin-toggle" for="autoCheckEnabled">
+                <span class="settings-toggle-label">Bật</span>
+                <input id="autoCheckEnabled" type="checkbox" />
+              </label>
+            </div>
+            <label class="login-field auto-check-interval">
+              <span>Thời gian giữa mỗi lần kiểm tra (phút)</span>
               <input
-                id="lilithUsername"
-                type="text"
-                autocomplete="username"
-                spellcheck="false"
+                id="autoCheckIntervalMinutes"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
               />
             </label>
-            <label class="login-field">
-              <span>Mật khẩu Lilith Store</span>
-              <input
-                id="lilithPassword"
-                type="password"
-                autocomplete="current-password"
-              />
-            </label>
+            <div
+              class="login-settings-status"
+              id="autoCheckSettingsStatus"
+              role="status"
+              aria-live="polite"
+            ></div>
           </section>
-          <section
-            class="login-panel"
-            id="loginPanelPluto"
-            role="tabpanel"
-            aria-labelledby="loginTabPluto"
-          >
-            <label class="login-field">
-              <span>Tài khoản Plutomall</span>
-              <input
-                id="plutoUsername"
-                type="text"
-                autocomplete="username"
-                spellcheck="false"
-              />
-            </label>
-            <label class="login-field">
-              <span>Mật khẩu Plutomall</span>
-              <input
-                id="plutoPassword"
-                type="password"
-                autocomplete="current-password"
-              />
-            </label>
-            <p class="login-note">
-              Tài khoản Plutomall sẽ được dùng riêng khi token Plutomall hết
-              hạn.
+
+          <section class="settings-section" aria-labelledby="autoReloginTitle">
+            <div class="settings-section-head">
+              <h3 class="settings-section-title" id="autoReloginTitle">Auto đăng nhập lại</h3>
+              <label class="auto-relogin-toggle" for="autoReloginEnabled">
+                <span class="settings-toggle-label">Bật</span>
+                <input id="autoReloginEnabled" type="checkbox" />
+              </label>
+            </div>
+            <div class="settings-section-content" id="autoReloginSettings">
+              <div
+                class="login-tabs"
+                role="tablist"
+                aria-label="Cấu hình đăng nhập cửa hàng"
+              >
+                <button
+                  class="login-tab active"
+                  id="loginTabPluto"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="loginPanelPluto"
+                  data-login-tab="plutomall"
+                >
+                  Plutomall
+                </button>
+                <button
+                  class="login-tab"
+                  id="loginTabLilith"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="loginPanelLilith"
+                  data-login-tab="lilithstore"
+                >
+                  Lilith Store
+                </button>
+              </div>
+              <section
+                class="login-panel"
+                id="loginPanelLilith"
+                role="tabpanel"
+                aria-labelledby="loginTabLilith"
+                hidden
+              >
+                <label class="login-field">
+                  <span>Tài khoản Lilith Store</span>
+                  <input
+                    id="lilithUsername"
+                    type="text"
+                    autocomplete="username"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="login-field">
+                  <span>Mật khẩu Lilith Store</span>
+                  <input
+                    id="lilithPassword"
+                    type="password"
+                    autocomplete="current-password"
+                  />
+                </label>
+              </section>
+              <section
+                class="login-panel"
+                id="loginPanelPluto"
+                role="tabpanel"
+                aria-labelledby="loginTabPluto"
+              >
+                <label class="login-field">
+                  <span>Tài khoản Plutomall</span>
+                  <input
+                    id="plutoUsername"
+                    type="text"
+                    autocomplete="username"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="login-field">
+                  <span>Mật khẩu Plutomall</span>
+                  <input
+                    id="plutoPassword"
+                    type="password"
+                    autocomplete="current-password"
+                  />
+                </label>
+                <p class="login-note">
+                  Tài khoản Plutomall sẽ được dùng riêng khi token Plutomall hết
+                  hạn.
+                </p>
+              </section>
+              <p class="login-note">
+                Thông tin đăng nhập được lưu trên thiết bị cho đến khi bạn xóa.
+                Mỗi cửa hàng dùng tài khoản riêng.
+              </p>
+              <div class="btn-row login-actions">
+                <button class="btn-util" id="saveLoginBtn" type="button">
+                  Lưu thông tin
+                </button>
+                <button class="btn-util" id="clearLoginBtn" type="button">
+                  Xóa thông tin
+                </button>
+              </div>
+              <div class="btn-row">
+                <button class="btn-util" id="testPlutoReloginBtn" type="button">
+                  Check Plutomall
+                </button>
+                <button class="btn-util" id="testLilithReloginBtn" type="button">
+                  CheckLilith Store
+                </button>
+              </div>
+              <div
+                class="login-settings-status"
+                id="loginSettingsStatus"
+                role="status"
+                aria-live="polite"
+              ></div>
+            </div>
+          </section>
+
+          <section class="settings-section" aria-labelledby="configTitle">
+            <h3 class="settings-section-title" id="configTitle">Xuất / nhập cấu hình</h3>
+            <p class="login-note config-warning">
+              File xuất có thể chứa mật khẩu ở dạng văn bản thuần. Chỉ lưu trữ
+              và chia sẻ file ở nơi an toàn.
             </p>
+            <div class="config-selection-actions">
+              <button class="btn-util" id="toggleAllConfigBtn" type="button">
+                <svg
+                  class="config-selection-icon"
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <rect x="2.5" y="2.5" width="15" height="15" rx="3" />
+                  <path d="m6.5 10 2.3 2.3 4.8-4.8" />
+                </svg>
+                <span id="toggleAllConfigLabel">Chọn tất cả</span>
+              </button>
+              <span class="config-selection-count" id="configSelectionCount"></span>
+            </div>
+            <div class="config-options" aria-label="Chọn cài đặt cần xuất">
+              <label>
+                <input type="checkbox" value="autoReloginEnabled" checked />
+                Auto đăng nhập lại
+              </label>
+              <label>
+                <input type="checkbox" value="autoCheckIntervalMinutes" checked />
+                Thời gian Auto kiểm tra
+              </label>
+              <label>
+                <input type="checkbox" value="autoCheckEnabled" checked />
+                Bật Auto kiểm tra
+              </label>
+              <label>
+                <input type="checkbox" value="plutomallUsername" />
+                Tài khoản Plutomall
+              </label>
+              <label>
+                <input type="checkbox" value="plutomallPassword" />
+                Mật khẩu Plutomall
+              </label>
+              <label>
+                <input type="checkbox" value="lilithstoreUsername" />
+                Tài khoản Lilith Store
+              </label>
+              <label>
+                <input type="checkbox" value="lilithstorePassword" />
+                Mật khẩu Lilith Store
+              </label>
+            </div>
+            <div class="btn-row config-file-actions">
+              <button class="btn-util" id="exportConfigBtn" type="button">Xuất cấu hình</button>
+              <button class="btn-util" id="importConfigBtn" type="button">Nhập cấu hình</button>
+              <input
+                id="importConfigFile"
+                type="file"
+                accept=".json,application/json"
+                hidden
+              />
+            </div>
+            <div
+              class="login-settings-status"
+              id="configSettingsStatus"
+              role="status"
+              aria-live="polite"
+            ></div>
           </section>
-          <p class="login-note">
-            Thông tin đăng nhập được lưu trên thiết bị cho đến khi bạn xóa. Mỗi
-            cửa hàng dùng tài khoản riêng.
-          </p>
-          <div class="btn-row login-actions">
-            <button class="btn-util" id="saveLoginBtn" type="button">
-              Lưu thông tin
-            </button>
-            <button class="btn-util" id="clearLoginBtn" type="button">
-              Xóa thông tin
-            </button>
-          </div>
-          <div class="btn-row">
-            <button class="btn-util" id="testPlutoReloginBtn" type="button">
-              Check Plutomall
-            </button>
-            <button class="btn-util" id="testLilithReloginBtn" type="button">
-              CheckLilith Store
-            </button>
-          </div>
-          <div
-            class="login-settings-status"
-            id="loginSettingsStatus"
-            role="status"
-            aria-live="polite"
-          ></div>
-        </div>
-      </div>
 
-      <div class="card glass">
+          <section class="settings-section token-section" aria-labelledby="tokenTitle">
+            <div class="settings-section-head">
+              <h3 class="settings-section-title" id="tokenTitle">Token</h3>
+              <button
+                class="char-copy-btn"
+                id="copyTokenBtn"
+                type="button"
+                title="Sao chép token"
+                aria-label="Sao chép token"
+              >⧉</button>
+            </div>
+            <textarea
+              id="tokenBox"
+              readonly
+              placeholder="Token sẽ hiện ở đây sau khi lấy…"
+            ></textarea>
+            <div
+              class="login-settings-status"
+              id="tokenCopyStatus"
+              role="status"
+              aria-live="polite"
+            ></div>
+          </section>
+        </div>
+      </section>
+
+      <div class="card glass action-card">
         <div class="card-head">
           <div class="eyebrow-row">
             <div class="eyebrow">Thao tác</div>
@@ -217,7 +301,7 @@
         </div>
       </div>
 
-      <div class="card glass">
+      <div class="card glass characters-card">
         <div class="card-head">
           <div class="eyebrow-row">
             <div class="eyebrow">Nhân vật</div>
@@ -232,19 +316,6 @@
               <span class="badge badge-warn">Chưa có token</span>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div class="card glass">
-        <div class="card-head">
-          <div class="eyebrow">Token</div>
-        </div>
-        <div class="card-body">
-          <textarea
-            id="tokenBox"
-            readonly
-            placeholder="Token sẽ hiện ở đây sau khi lấy…"
-          ></textarea>
         </div>
       </div>
 
