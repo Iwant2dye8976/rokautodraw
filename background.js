@@ -44,6 +44,82 @@ function sk(mall, name) {
     return `${mall}_${name}`;
 }
 
+function ask(mall, accountId, name) {
+    return accountId ? `${mall}_account_${accountId}_${name}` : sk(mall, name);
+}
+
+async function getStoreAccounts(mall) {
+    const { storeAccounts } = await chrome.storage.local.get("storeAccounts");
+    const accounts = storeAccounts && typeof storeAccounts === "object"
+        ? storeAccounts[mall]
+        : undefined;
+    if (Array.isArray(accounts)) return accounts.filter(account =>
+        account && typeof account.id === "string" &&
+        /^[A-Za-z0-9-]+$/.test(account.id) &&
+        typeof account.username === "string" && typeof account.password === "string"
+    );
+    return [];
+}
+
+async function getStoreAccount(mall, accountId) {
+    const accounts = await getStoreAccounts(mall);
+    const account = accounts.find(item => item.id === accountId);
+    if (account) return account;
+    if (accountId === "legacy") {
+        const values = await chrome.storage.local.get([
+            `${mall}Username`,
+            `${mall}Password`,
+        ]);
+        if (values[`${mall}Username`] || values[`${mall}Password`]) {
+            return {
+                id: "legacy",
+                username: values[`${mall}Username`] || "",
+                password: values[`${mall}Password`] || "",
+            };
+        }
+    }
+    return null;
+}
+
+const RELOGIN_SEQUENCE_KEYS = [
+    "autoReloginSequenceMall",
+    "autoReloginSequenceAccountIds",
+    "autoReloginSequenceIndex",
+    "autoReloginSequenceFailures",
+];
+
+async function continueReloginSequence(expectedMall, expectedAccountId, failure) {
+    const sequence = await chrome.storage.session.get(RELOGIN_SEQUENCE_KEYS);
+    if (
+        sequence.autoReloginSequenceMall !== expectedMall ||
+        sequence.autoReloginSequenceAccountIds?.[sequence.autoReloginSequenceIndex] !== expectedAccountId
+    ) return;
+
+    const failures = sequence.autoReloginSequenceFailures || [];
+    if (failure) {
+        failures.push({ accountId: expectedAccountId, error: failure });
+        await chrome.storage.session.set({ autoReloginSequenceFailures: failures });
+    }
+
+    let index = sequence.autoReloginSequenceIndex + 1;
+    while (index < sequence.autoReloginSequenceAccountIds.length) {
+        const accountId = sequence.autoReloginSequenceAccountIds[index];
+        await chrome.storage.session.set({
+            autoReloginSequenceIndex: index,
+            autoReloginSequenceFailures: failures,
+        });
+        if (await openReloginWindow(expectedMall, accountId)) return;
+        failures.push({ accountId, error: "Không thể mở tab đăng nhập." });
+        index++;
+    }
+    await chrome.storage.session.remove(RELOGIN_SEQUENCE_KEYS);
+    await chrome.storage.local.set({
+        autoReloginStatus: failures.length
+            ? `Đã kiểm tra xong các tài khoản ${STORE_NAMES[expectedMall]}; ${failures.length} tài khoản thất bại.`
+            : `Đã hoàn tất kiểm tra tuần tự các tài khoản ${STORE_NAMES[expectedMall]}.`,
+    });
+}
+
 function isExpiredTokenResponse(json, url) {
     const code = Number(json?.code ?? json?.ret ?? json?.status);
     if (code === 401 || code === 403) return true;
@@ -62,44 +138,44 @@ async function getCurrentMall() {
     return currentMall || "plutomall";
 }
 
-async function getStoreData(mall) {
+async function getStoreData(mall, accountId) {
     const keys = [
-        sk(mall, "token"),
-        sk(mall, "roles"),
-        sk(mall, "drawsLeft"),
-        sk(mall, "lastCheck"),
-        sk(mall, "appUid"),
-        sk(mall, "appId"),
-        sk(mall, "isValidToken"),
+        ask(mall, accountId, "token"),
+        ask(mall, accountId, "roles"),
+        ask(mall, accountId, "drawsLeft"),
+        ask(mall, accountId, "lastCheck"),
+        ask(mall, accountId, "appUid"),
+        ask(mall, accountId, "appId"),
+        ask(mall, accountId, "isValidToken"),
     ];
     const data = await chrome.storage.local.get(keys);
     return {
-        token: data[sk(mall, "token")] ?? null,
-        roles: data[sk(mall, "roles")] ?? [],
-        drawsLeft: data[sk(mall, "drawsLeft")] ?? null,
-        lastCheck: data[sk(mall, "lastCheck")] ?? null,
-        appUid: data[sk(mall, "appUid")] ?? null,
-        appId: data[sk(mall, "appId")] ?? null,
-        isValidToken: data[sk(mall, "isValidToken")] ?? null,
+        token: data[ask(mall, accountId, "token")] ?? null,
+        roles: data[ask(mall, accountId, "roles")] ?? [],
+        drawsLeft: data[ask(mall, accountId, "drawsLeft")] ?? null,
+        lastCheck: data[ask(mall, accountId, "lastCheck")] ?? null,
+        appUid: data[ask(mall, accountId, "appUid")] ?? null,
+        appId: data[ask(mall, accountId, "appId")] ?? null,
+        isValidToken: data[ask(mall, accountId, "isValidToken")] ?? null,
     };
 }
 
-async function setStoreData(mall, partial) {
+async function setStoreData(mall, partial, accountId) {
     const mapped = {};
     for (const [k, v] of Object.entries(partial)) {
-        mapped[sk(mall, k)] = v;
+        mapped[ask(mall, accountId, k)] = v;
     }
     await chrome.storage.local.set(mapped);
 }
 
 
-async function getToken(mall) {
+async function getToken(mall, accountId) {
     const m = mall ?? await getCurrentMall();
-    const data = await getStoreData(m);
+    const data = await getStoreData(m, accountId);
     return data.token ?? null;
 }
 
-async function fetchJson(url, options = {}) {
+async function fetchJson(url, options = {}, accountId) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
@@ -115,7 +191,7 @@ async function fetchJson(url, options = {}) {
 
         if (response.status === 401 || response.status === 403) {
             const mall = detectMallFromUrl(url);
-            if (mall) void openReloginWindow(mall);
+            if (mall) void openReloginWindow(mall, accountId);
         }
 
         let json;
@@ -128,7 +204,7 @@ async function fetchJson(url, options = {}) {
         }
         if (response.ok && isExpiredTokenResponse(json, url)) {
             const mall = detectMallFromUrl(url);
-            if (mall) void openReloginWindow(mall);
+            if (mall) void openReloginWindow(mall, accountId);
             const error = new Error(
                 json?.msg || json?.message || "Token đã hết hạn"
             );
@@ -147,23 +223,24 @@ async function fetchJson(url, options = {}) {
     }
 }
 
-async function openReloginWindow(mall) {
+async function openReloginWindow(mall, accountId) {
     if (!STORE_CONFIG[mall]) return false;
-    if (activeRelogins.has(mall)) return true;
-    activeRelogins.add(mall);
+    const reloginKey = `${mall}:${accountId || "default"}`;
+    if (activeRelogins.has(reloginKey)) return true;
+    activeRelogins.add(reloginKey);
     try {
-        const usernameKey = `${mall}Username`;
-        const passwordKey = `${mall}Password`;
-        const settings = await chrome.storage.local.get([
-            "autoReloginEnabled",
-            usernameKey,
-            passwordKey,
+        const [settings, accounts] = await Promise.all([
+            chrome.storage.local.get("autoReloginEnabled"),
+            getStoreAccounts(mall),
         ]);
+        const selectedId = accountId || accounts[0]?.id || "legacy";
+        const account = await getStoreAccount(mall, selectedId);
         const session = await chrome.storage.session.get([
             "autoReloginWindowId",
             "autoReloginTabId",
             "autoReloginStartedAt",
             "autoReloginMall",
+            "autoReloginAccountId",
         ]);
         if (settings.autoReloginEnabled !== true) {
             await chrome.storage.local.set({
@@ -171,9 +248,9 @@ async function openReloginWindow(mall) {
             });
             return false;
         }
-        if (!settings[usernameKey] || !settings[passwordKey]) {
+        if (!account?.username || !account.password) {
             await chrome.storage.local.set({
-                autoReloginStatus: `Thiếu tài khoản hoặc mật khẩu ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"}.`,
+                autoReloginStatus: `Thiếu tài khoản hoặc mật khẩu ${STORE_NAMES[mall]}.`,
             });
             return false;
         }
@@ -183,8 +260,9 @@ async function openReloginWindow(mall) {
             try {
                 await chrome.tabs.get(session.autoReloginTabId);
                 await chrome.storage.local.set({
-                    autoReloginStatus: session.autoReloginMall === mall
-                        ? `Tab đăng nhập ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"} đã đang mở.`
+                    autoReloginStatus: session.autoReloginMall === mall &&
+                        session.autoReloginAccountId === selectedId
+                        ? `Tab đăng nhập ${STORE_NAMES[mall]} đã đang mở.`
                         : "Một tab tự đăng nhập khác đang chạy.",
                 });
                 return true;
@@ -194,9 +272,11 @@ async function openReloginWindow(mall) {
                     "autoReloginTabId",
                     "autoReloginStartedAt",
                     "autoReloginMall",
+                    "autoReloginAccountId",
                     "autoReloginReturnedAt",
                     "autoReloginReadyAt",
                     "autoReloginAccountSwitch",
+                    ...RELOGIN_SEQUENCE_KEYS,
                 ]);
             }
         }
@@ -217,6 +297,7 @@ async function openReloginWindow(mall) {
             autoReloginTabId: reloginTab.id,
             autoReloginStartedAt: Date.now(),
             autoReloginMall: mall,
+            autoReloginAccountId: selectedId,
         });
         const currentSettings = await chrome.storage.local.get("autoReloginEnabled");
         if (currentSettings.autoReloginEnabled !== true) {
@@ -226,6 +307,7 @@ async function openReloginWindow(mall) {
                 "autoReloginTabId",
                 "autoReloginStartedAt",
                 "autoReloginMall",
+                "autoReloginAccountId",
                 "autoReloginReturnedAt",
                 "autoReloginReadyAt",
                 "autoReloginAccountSwitch",
@@ -234,7 +316,7 @@ async function openReloginWindow(mall) {
         }
         await chrome.storage.local.set({
             currentMall: mall,
-            autoReloginStatus: `Đang đăng nhập ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"} trong tab nền`,
+            autoReloginStatus: `Đang đăng nhập ${STORE_NAMES[mall]} trong tab nền`,
         });
         const reloginUrl = mall === "lilithstore" ? LILITH_STORE_URL : PLUTOMALL_RELOGIN_URL;
         await chrome.tabs.update(reloginTab.id, { url: reloginUrl, active: false });
@@ -250,7 +332,7 @@ async function openReloginWindow(mall) {
         }
         return false;
     } finally {
-        activeRelogins.delete(mall);
+        activeRelogins.delete(reloginKey);
     }
 }
 
@@ -279,6 +361,7 @@ chrome.webRequest.onSendHeaders.addListener(
         const session = await chrome.storage.session.get([
             "autoReloginTabId",
             "autoReloginMall",
+            "autoReloginAccountId",
         ]);
         let mall = details.tabId === session.autoReloginTabId &&
             STORE_CONFIG[session.autoReloginMall]
@@ -304,6 +387,14 @@ chrome.webRequest.onSendHeaders.addListener(
         if (!mall) mall = await getCurrentMall();
 
         if (mall && authHeader?.value) {
+            const reloginAccountId = details.tabId === session.autoReloginTabId &&
+                session.autoReloginMall === mall
+                ? session.autoReloginAccountId
+                : undefined;
+            const { activeAccountIds = {} } = reloginAccountId
+                ? { activeAccountIds: {} }
+                : await chrome.storage.local.get("activeAccountIds");
+            const accountId = reloginAccountId || activeAccountIds[mall] || undefined;
             const token = authHeader.value;
             try {
                 const urlObj = new URL(details.url);
@@ -318,14 +409,13 @@ chrome.webRequest.onSendHeaders.addListener(
                     );
                     if (payload.client_id === "event_lglo") {
                         const tokenTimestamp = Date.now();
-                        await setStoreData(mall, { token, tokenTimestamp });
-                        await chrome.storage.local.set({ tokenTimestamp });
-                        console.log(`[LilithDraw][${mall}] Campaign token captured`);
+                        await setStoreData(mall, { token, tokenTimestamp }, accountId);
+                        console.log(`[LilithDraw][${mall}] Campaign token captured${accountId ? ` for account ${accountId}` : ""}`);
                     }
                 }
 
                 if (appUid && appId) {
-                    await setStoreData(mall, { appUid, appId });
+                    await setStoreData(mall, { appUid, appId }, accountId);
                     console.log(`[LilithDraw][${mall}] appUid and appId captured`);
                     try {
                         if (tab?.url?.includes("plutomall.com") || tab?.url?.includes("store.lilith.com")) {
@@ -427,22 +517,25 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 void ensureAutoCheckAlarm();
 
-async function refreshStoreAfterRelogin(mall) {
+async function refreshStoreAfterRelogin(mall, accountId) {
     const {
         autoReloginTabId,
         autoReloginStartedAt,
         autoReloginReturnedAt,
         autoReloginReadyAt,
         autoReloginMall,
+        autoReloginAccountId,
     } = await chrome.storage.session.get([
         "autoReloginTabId",
         "autoReloginStartedAt",
         "autoReloginReturnedAt",
         "autoReloginReadyAt",
         "autoReloginMall",
+        "autoReloginAccountId",
     ]);
     if (
         autoReloginMall !== mall ||
+        autoReloginAccountId !== accountId ||
         !autoReloginReturnedAt ||
         !Number.isFinite(autoReloginReadyAt) ||
         !Number.isInteger(autoReloginTabId) ||
@@ -450,28 +543,30 @@ async function refreshStoreAfterRelogin(mall) {
     ) return;
 
     const data = await chrome.storage.local.get([
-        sk(mall, "token"),
-        sk(mall, "tokenTimestamp"),
-        sk(mall, "appUid"),
-        sk(mall, "appId"),
+        ask(mall, accountId, "token"),
+        ask(mall, accountId, "tokenTimestamp"),
+        ask(mall, accountId, "appUid"),
+        ask(mall, accountId, "appId"),
     ]);
-    const token = data[sk(mall, "token")];
+    const token = data[ask(mall, accountId, "token")];
     if (
         !token ||
-        !Number.isFinite(data[sk(mall, "tokenTimestamp")]) ||
-        data[sk(mall, "tokenTimestamp")] <= autoReloginReadyAt ||
-        !data[sk(mall, "appUid")] ||
-        !data[sk(mall, "appId")]
+        !Number.isFinite(data[ask(mall, accountId, "tokenTimestamp")]) ||
+        data[ask(mall, accountId, "tokenTimestamp")] <= autoReloginReadyAt ||
+        !data[ask(mall, accountId, "appUid")] ||
+        !data[ask(mall, accountId, "appId")]
     ) return;
 
     activeReloginRefreshes.add(autoReloginTabId);
+    let refreshError;
     try {
-        const roles = await getRoles(token, mall, true);
-        const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall);
+        const roles = await getRoles(token, mall, true, accountId);
+        const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall, accountId);
         await chrome.storage.local.set({
             autoReloginStatus: `Đăng nhập ${STORE_NAMES[mall]} thành công; đã làm mới ${roles.length} nhân vật, còn ${totalDrawsLeft} lượt.`,
         });
     } catch (error) {
+        refreshError = error.message;
         await chrome.storage.local.set({
             autoReloginStatus: `Đăng nhập ${STORE_NAMES[mall]} xong nhưng làm mới thất bại: ${error.message}`,
         });
@@ -482,11 +577,13 @@ async function refreshStoreAfterRelogin(mall) {
             "autoReloginTabId",
             "autoReloginStartedAt",
             "autoReloginMall",
+            "autoReloginAccountId",
             "autoReloginReturnedAt",
             "autoReloginReadyAt",
             "autoReloginAccountSwitch",
         ]);
         activeReloginRefreshes.delete(autoReloginTabId);
+        await continueReloginSequence(mall, accountId, refreshError);
     }
 }
 
@@ -522,11 +619,13 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         const {
             autoReloginTabId,
             autoReloginMall,
+            autoReloginAccountId,
             autoReloginStartedAt,
             autoReloginReadyAt,
         } = await chrome.storage.session.get([
             "autoReloginTabId",
             "autoReloginMall",
+            "autoReloginAccountId",
             "autoReloginStartedAt",
             "autoReloginReadyAt",
         ]);
@@ -534,7 +633,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         const url = new URL(tab.url);
         if (!isReloginStoreUrl(url, autoReloginMall)) return;
         if (autoReloginReadyAt) {
-            await refreshStoreAfterRelogin(autoReloginMall);
+            await refreshStoreAfterRelogin(autoReloginMall, autoReloginAccountId);
             return;
         }
 
@@ -622,7 +721,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         } finally {
             activeReloginAccountChecks.delete(tabId);
         }
-        await refreshStoreAfterRelogin(autoReloginMall);
+        await refreshStoreAfterRelogin(autoReloginMall, autoReloginAccountId);
     })().catch(error => {
         console.error("[LilithDraw] Could not verify relogin redirect:", error);
         void chrome.storage.local.set({
@@ -636,12 +735,17 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
     for (const mall of Object.keys(STORE_CONFIG)) {
-        if (
-            changes[sk(mall, "tokenTimestamp")] ||
-            changes[sk(mall, "appUid")] ||
-            changes[sk(mall, "appId")]
-        ) {
-            void refreshStoreAfterRelogin(mall).catch(error => {
+        const accountChanges = Object.keys(changes)
+            .map(key => {
+                const match = key.match(new RegExp(`^${mall}_account_(.+)_(?:tokenTimestamp|appUid|appId)$`));
+                return match?.[1];
+            })
+            .filter(Boolean);
+        if (changes[sk(mall, "tokenTimestamp")] || changes[sk(mall, "appUid")] || changes[sk(mall, "appId")]) {
+            accountChanges.push(undefined);
+        }
+        for (const accountId of new Set(accountChanges)) {
+            void refreshStoreAfterRelogin(mall, accountId).catch(error => {
                 console.error(`[LilithDraw] Could not refresh after ${mall} token capture:`, error);
             });
         }
@@ -664,6 +768,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
             "autoReloginTabId",
             "autoReloginStartedAt",
             "autoReloginMall",
+            "autoReloginAccountId",
             "autoReloginReturnedAt",
             "autoReloginReadyAt",
             "autoReloginAccountSwitch",
@@ -676,55 +781,66 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
     for (const mall of Object.keys(STORE_CONFIG)) {
-        try {
-            await autoDrawMall(mall, trigger);
-        } catch (e) {
-            console.error(`[LilithDraw][${mall}] Scheduled draw failed:`, e);
+        const accounts = await getStoreAccounts(mall);
+        const profiles = accounts.length > 0 ? accounts : [null];
+        for (const account of profiles) {
+            try {
+                await autoDrawMall(mall, trigger, account?.id);
+            } catch (e) {
+                console.error(`[LilithDraw][${mall}] Scheduled draw failed:`, e);
+            }
         }
     }
 }
 
-async function autoDrawMall(mall, trigger) {
-    if (activeDraws.has(mall)) return;
-    activeDraws.add(mall);
+async function autoDrawMall(mall, trigger, accountId) {
+    const profileKey = ask(mall, accountId, "draw");
+    if (activeDraws.has(profileKey)) return;
+    activeDraws.add(profileKey);
     try {
         const checkedAt = new Date().toLocaleString();
         await chrome.storage.local.set({
-            [sk(mall, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Đang kiểm tra lượt quay..."],
+            [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Đang kiểm tra lượt quay..."],
         });
-        const token = await getToken(mall);
+        const token = await getToken(mall, accountId);
         if (!token) {
             await chrome.storage.local.set({
-                [sk(mall, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Bỏ qua: chưa có token"],
+                [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Bỏ qua: chưa có token"],
             });
             return;
         }
-        const roles = await getRoles(token, mall, true);
-        const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall);
+        const roles = await getRoles(token, mall, true, accountId);
+        const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall, accountId);
         if (totalDrawsLeft === 0) {
             await chrome.storage.local.set({
-                [sk(mall, "drawLog")]: [
+                [ask(mall, accountId, "drawLog")]: [
                     `${trigger} lúc ${checkedAt}`,
                     "Kiểm tra hoàn tất: không còn lượt quay, bỏ qua quay thưởng.",
                 ],
             });
             return;
         }
-        const log = await runDraws(token, mall, true);
+        const log = await runDraws(token, mall, true, accountId);
         await chrome.storage.local.set({
-            [sk(mall, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...log],
+            [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...log],
         });
     } catch (e) {
         console.error(`[LilithDraw][${mall}] autoDrawMall error:`, e);
+        await chrome.storage.local.set({
+            [ask(mall, accountId, "drawLog")]: [
+                `${trigger} lúc ${checkedAt}`,
+                `Lỗi kiểm tra: ${e.message}`,
+            ],
+        });
     } finally {
-        activeDraws.delete(mall);
+        activeDraws.delete(profileKey);
     }
 }
 
 
-async function getRoles(token, mall, forceRefresh = false) {
+async function getRoles(token, mall, forceRefresh = false, accountId) {
     if (!forceRefresh) {
-        const cached = (await getStoreData(mall)).roles;
+        const cached = (await getStoreData(mall, accountId)).roles;
         if (cached?.length > 0) {
             console.log(`[LilithDraw][${mall}] Serving roles from cache (${cached.length})`);
             return cached;
@@ -739,11 +855,12 @@ async function getRoles(token, mall, forceRefresh = false) {
             {
                 method: "GET",
                 headers: { authorization: token, "Content-Type": "application/json" }
-            }
+            },
+            accountId
         );
     } catch (error) {
         if (error.status === 401 || error.status === 403) {
-            await setStoreData(mall, { roles: [], isValidToken: false });
+            await setStoreData(mall, { roles: [], isValidToken: false }, accountId);
         }
         throw error;
     }
@@ -751,22 +868,22 @@ async function getRoles(token, mall, forceRefresh = false) {
     if (!Array.isArray(roles)) {
         throw new Error("Phản hồi danh sách nhân vật không hợp lệ");
     }
-    await setStoreData(mall, { roles, isValidToken: true });
+    await setStoreData(mall, { roles, isValidToken: true }, accountId);
     return roles;
 }
 
-async function getCharacterById(token, roleId, mall) {
-    const cached = (await getStoreData(mall)).roles;
+async function getCharacterById(token, roleId, mall, accountId) {
+    const cached = (await getStoreData(mall, accountId)).roles;
     if (cached?.length > 0) {
         const hit = cached.find(r => String(r.roleId) === String(roleId));
         if (hit) return hit;
     }
-    const roles = await getRoles(token, mall, true);
+    const roles = await getRoles(token, mall, true, accountId);
     return roles.find(c => String(c.roleId) === String(roleId));
 }
 
-async function getManifest(token, role, mall) {
-    const identifiers = getAppIdentifiers(await getStoreData(mall));
+async function getManifest(token, role, mall, accountId) {
+    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId));
     const config = STORE_CONFIG[mall];
     const params = new URLSearchParams({
         language: "vi", osType: "pc",
@@ -778,7 +895,8 @@ async function getManifest(token, role, mall) {
     });
     return fetchJson(
         `https://plat-campaign-api.lilithgame.com/page/${config.pageId}/manifest?${params}`,
-        { headers: { accept: "application/json", authorization: token } }
+        { headers: { accept: "application/json", authorization: token } },
+        accountId
     );
 }
 
@@ -838,19 +956,19 @@ function getRoleDrawCount(manifest, mall) {
     return count;
 }
 
-async function getTotalDrawsLeft(token, roles, mall) {
+async function getTotalDrawsLeft(token, roles, mall, accountId) {
     let total = 0;
     for (const role of roles) {
-        const manifest = await getManifest(token, role, mall);
+        const manifest = await getManifest(token, role, mall, accountId);
         total += getRoleDrawCount(manifest, mall);
     }
     const lastCheck = new Date().toLocaleString();
-    await setStoreData(mall, { drawsLeft: total, lastCheck });
+    await setStoreData(mall, { drawsLeft: total, lastCheck }, accountId);
     return total;
 }
 
-async function drawOnce(token, role, mall) {
-    const identifiers = getAppIdentifiers(await getStoreData(mall));
+async function drawOnce(token, role, mall, accountId) {
+    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId));
     const config = STORE_CONFIG[mall];
     const rolePayload = {
         name: role.name, avatar: role.avatar,
@@ -874,17 +992,18 @@ async function drawOnce(token, role, mall) {
                 action: "drawing",
                 params: {}
             })
-        }
+        },
+        accountId
     );
 }
 
-async function runDraws(token, mall, forceRefreshRoles = false) {
+async function runDraws(token, mall, forceRefreshRoles = false, accountId) {
     const startedAt = Date.now();
     const maxRuntimeMs = 4 * 60 * 1000;
     const log = [];
     let roles;
     try {
-        roles = await getRoles(token, mall, forceRefreshRoles);
+        roles = await getRoles(token, mall, forceRefreshRoles, accountId);
     } catch (e) {
         log.push(`Lỗi khi tải thông tin nhân vật: ${e.message}`);
         return log;
@@ -902,10 +1021,10 @@ async function runDraws(token, mall, forceRefreshRoles = false) {
             return log;
         }
         try {
-            const manifest = await getManifest(token, role, mall);
+            const manifest = await getManifest(token, role, mall, accountId);
             const drawCount = getRoleDrawCount(manifest, mall);
             if (drawCount > 0) {
-                const result = await drawOnce(token, role, mall);
+                const result = await drawOnce(token, role, mall, accountId);
                 const rewardId = result?.data?.rewardId;
                 const reward = REWARDS[rewardId] || result?.data?.reward ||
                     (rewardId ? `Phần thưởng ${rewardId}` : null);
@@ -925,11 +1044,11 @@ async function runDraws(token, mall, forceRefreshRoles = false) {
 }
 
 
-async function getDrawHistory(token, roleId, mall) {
-    const character = await getCharacterById(token, roleId, mall);
+async function getDrawHistory(token, roleId, mall, accountId) {
+    const character = await getCharacterById(token, roleId, mall, accountId);
     if (!character) throw new Error("Không tìm thấy thông tin nhân vật");
 
-    const identifiers = getAppIdentifiers(await getStoreData(mall));
+    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId));
     const config = STORE_CONFIG[mall];
     const params = new URLSearchParams({
         language: "vi", osType: "pc",
@@ -941,7 +1060,8 @@ async function getDrawHistory(token, roleId, mall) {
     });
     return fetchJson(
         `https://plat-campaign-api.lilithgame.com/page/${config.pageId}/reward-history?${params}`,
-        { headers: { accept: "application/json", authorization: token } }
+        { headers: { accept: "application/json", authorization: token } },
+        accountId
     );
 }
 
@@ -994,6 +1114,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     "autoReloginTabId",
                     "autoReloginStartedAt",
                     "autoReloginMall",
+                    "autoReloginAccountId",
                 ]),
                 chrome.storage.local.get("autoReloginEnabled"),
             ]);
@@ -1035,27 +1156,65 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.action === "testRelogin" && STORE_CONFIG[msg.mall]) {
-        openReloginWindow(msg.mall)
+        openReloginWindow(msg.mall, msg.accountId)
             .then(started => sendResponse({ ok: started }))
             .catch(error => sendResponse({ error: error.message }));
+        return true;
+    }
+
+    if (msg.action === "testReloginSequence" && STORE_CONFIG[msg.mall]) {
+        (async () => {
+            const accounts = await getStoreAccounts(msg.mall);
+            const requestedIds = Array.isArray(msg.accountIds) ? msg.accountIds : [];
+            if (
+                requestedIds.length === 0 ||
+                requestedIds.some(id => !accounts.some(account =>
+                    account.id === id && account.username && account.password
+                ))
+            ) {
+                sendResponse({ error: "Danh sách tài khoản kiểm tra không hợp lệ." });
+                return;
+            }
+            const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
+            if (autoReloginEnabled !== true) {
+                sendResponse({ error: "Hãy bật Auto đăng nhập lại trước khi kiểm tra." });
+                return;
+            }
+            const runningSession = await chrome.storage.session.get("autoReloginStartedAt");
+            if (
+                Number.isFinite(runningSession.autoReloginStartedAt) &&
+                Date.now() - runningSession.autoReloginStartedAt < 5 * 60 * 1000
+            ) {
+                sendResponse({ error: "Một luồng đăng nhập lại đang chạy. Hãy chờ luồng đó hoàn tất rồi thử lại." });
+                return;
+            }
+            await chrome.storage.session.set({
+                autoReloginSequenceMall: msg.mall,
+                autoReloginSequenceAccountIds: requestedIds,
+                autoReloginSequenceIndex: 0,
+                autoReloginSequenceFailures: [],
+            });
+            const started = await openReloginWindow(msg.mall, requestedIds[0]);
+            if (!started) {
+                void continueReloginSequence(msg.mall, requestedIds[0], "Không thể mở tab đăng nhập.").catch(error => {
+                    console.error("[LilithDraw] Could not continue account-check sequence:", error);
+                });
+            }
+            sendResponse({ ok: true });
+        })().catch(error => sendResponse({ error: error.message }));
         return true;
     }
 
     if (msg.action === "getReloginCredentials") {
         (async () => {
             const [settings, session] = await Promise.all([
-                chrome.storage.local.get([
-                    "autoReloginEnabled",
-                    "lilithstoreUsername",
-                    "lilithstorePassword",
-                    "plutomallUsername",
-                    "plutomallPassword",
-                ]),
+                chrome.storage.local.get("autoReloginEnabled"),
                 chrome.storage.session.get([
                     "autoReloginWindowId",
                     "autoReloginTabId",
                     "autoReloginStartedAt",
                     "autoReloginMall",
+                    "autoReloginAccountId",
                 ]),
             ]);
             let origin;
@@ -1065,6 +1224,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 origin = "";
             }
             const mall = session.autoReloginMall;
+            const account = await getStoreAccount(mall, session.autoReloginAccountId);
             if (
                 !STORE_CONFIG[mall] ||
                 origin !== RELOGIN_ORIGINS[mall] ||
@@ -1079,8 +1239,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             }
             sendResponse({
                 mall,
-                username: settings[`${mall}Username`] || "",
-                password: settings[`${mall}Password`] || "",
+                accountId: session.autoReloginAccountId,
+                username: account?.username || "",
+                password: account?.password || "",
             });
         })().catch(error => sendResponse({ error: error.message }));
         return true;
@@ -1088,11 +1249,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.action === "reloginFinished") {
         (async () => {
-            const { autoReloginTabId, autoReloginStartedAt, autoReloginMall } =
+            const { autoReloginTabId, autoReloginStartedAt, autoReloginMall, autoReloginAccountId } =
                 await chrome.storage.session.get([
                     "autoReloginTabId",
                     "autoReloginStartedAt",
                     "autoReloginMall",
+                    "autoReloginAccountId",
                 ]);
             let origin;
             try {
@@ -1116,6 +1278,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     ? `Đăng nhập ${STORE_NAMES[autoReloginMall]} thành công`
                     : `Đăng nhập ${STORE_NAMES[autoReloginMall]} thất bại: ${String(msg.error || "Lỗi không xác định")}`,
             });
+            if (!msg.success) {
+                await chrome.storage.session.remove([
+                    "autoReloginWindowId",
+                    "autoReloginTabId",
+                    "autoReloginStartedAt",
+                    "autoReloginMall",
+                    "autoReloginAccountId",
+                    "autoReloginReturnedAt",
+                    "autoReloginReadyAt",
+                    "autoReloginAccountSwitch",
+                ]);
+                await continueReloginSequence(
+                    autoReloginMall,
+                    autoReloginAccountId,
+                    String(msg.error || "Lỗi không xác định")
+                );
+            }
             sendResponse({ ok: true });
         })().catch(error => sendResponse({ error: error.message }));
         return true;
@@ -1124,7 +1303,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "getCache") {
         (async () => {
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
-            const data = await getStoreData(mall);
+            const data = await getStoreData(mall, msg.accountId);
             sendResponse({
                 mall,
                 roles: data.roles,
@@ -1140,12 +1319,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "refresh") {
         (async () => {
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
-            const token = await getToken(mall);
+            const accountId = msg.accountId;
+            const token = await getToken(mall, accountId);
             if (!token) { sendResponse({ error: "Không có token" }); return; }
             try {
-                const roles = await getRoles(token, mall, true);
-                const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall);
-                const storeData = await getStoreData(mall);
+                const roles = await getRoles(token, mall, true, accountId);
+                const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall, accountId);
+                const storeData = await getStoreData(mall, accountId);
                 sendResponse({
                     mall,
                     roles,
@@ -1163,37 +1343,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "drawNow") {
         (async () => {
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
-            if (activeDraws.has(mall)) {
+            const accountId = msg.accountId;
+            const profileKey = ask(mall, accountId, "draw");
+            if (activeDraws.has(profileKey)) {
                 sendResponse({ error: "Đang có lượt quay chạy cho cửa hàng này" });
                 return;
             }
-            activeDraws.add(mall);
+            activeDraws.add(profileKey);
             let responseSent = false;
             try {
-                const token = await getToken(mall);
+                const token = await getToken(mall, accountId);
                 if (!token) {
                     sendResponse({ error: "Không có token trong bộ nhớ. Vui lòng mở trang quay thưởng trước." });
                     return;
                 }
-                await chrome.storage.local.set({ [sk(mall, "drawLog")]: ["Bắt đầu quay thưởng..."] });
+                await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: ["Bắt đầu quay thưởng..."] });
                 sendResponse({ ok: true });
                 responseSent = true;
-                const log = await runDraws(token, mall);
-                await chrome.storage.local.set({ [sk(mall, "drawLog")]: log });
+                const log = await runDraws(token, mall, false, accountId);
+                await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: log });
             } catch (error) {
                 if (!responseSent) {
                     sendResponse({ error: error.message });
                 } else {
                     try {
                         await chrome.storage.local.set({
-                            [sk(mall, "drawLog")]: [`Lỗi khi quay thưởng: ${error.message}`]
+                            [ask(mall, accountId, "drawLog")]: [`Lỗi khi quay thưởng: ${error.message}`]
                         });
                     } catch (storageError) {
                         console.error(`[LilithDraw][${mall}] Could not save draw error:`, storageError);
                     }
                 }
             } finally {
-                activeDraws.delete(mall);
+                activeDraws.delete(profileKey);
             }
         })().catch(error => sendResponse({ error: error.message }));
         return true;
@@ -1202,12 +1384,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "getDrawHistory") {
         (async () => {
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
-            const token = await getToken(mall);
+            const accountId = msg.accountId;
+            const token = await getToken(mall, accountId);
             if (!token) { sendResponse({ error: "Không có token" }); return; }
             try {
                 const [history, character] = await Promise.all([
-                    getDrawHistory(token, msg.roleId, mall),
-                    getCharacterById(token, msg.roleId, mall),
+                    getDrawHistory(token, msg.roleId, mall, accountId),
+                    getCharacterById(token, msg.roleId, mall, accountId),
                 ]);
                 sendResponse({ history, character });
             } catch (e) {

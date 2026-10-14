@@ -104,23 +104,10 @@
                 aria-labelledby="loginTabLilith"
                 hidden
               >
-                <label class="login-field">
-                  <span>Tài khoản Lilith Store</span>
-                  <input
-                    id="lilithUsername"
-                    type="text"
-                    autocomplete="username"
-                    spellcheck="false"
-                  />
-                </label>
-                <label class="login-field">
-                  <span>Mật khẩu Lilith Store</span>
-                  <input
-                    id="lilithPassword"
-                    type="password"
-                    autocomplete="current-password"
-                  />
-                </label>
+                <div class="saved-accounts" id="lilithstoreAccounts"></div>
+                <button class="btn-util add-account-btn" data-add-account="lilithstore" type="button">
+                  + Thêm tài khoản
+                </button>
               </section>
               <section
                 class="login-panel"
@@ -128,46 +115,42 @@
                 role="tabpanel"
                 aria-labelledby="loginTabPluto"
               >
-                <label class="login-field">
-                  <span>Tài khoản Plutomall</span>
-                  <input
-                    id="plutoUsername"
-                    type="text"
-                    autocomplete="username"
-                    spellcheck="false"
-                  />
-                </label>
-                <label class="login-field">
-                  <span>Mật khẩu Plutomall</span>
-                  <input
-                    id="plutoPassword"
-                    type="password"
-                    autocomplete="current-password"
-                  />
-                </label>
+                <div class="saved-accounts" id="plutomallAccounts"></div>
+                <button class="btn-util add-account-btn" data-add-account="plutomall" type="button">
+                  + Thêm tài khoản
+                </button>
                 <p class="login-note">
-                  Tài khoản Plutomall sẽ được dùng riêng khi token Plutomall hết
-                  hạn.
+                  Mỗi tài khoản có token và dữ liệu quay thưởng riêng.
                 </p>
               </section>
               <p class="login-note">
                 Thông tin đăng nhập được lưu trên thiết bị cho đến khi bạn xóa.
-                Mỗi cửa hàng dùng tài khoản riêng.
+                Tự động kiểm tra sẽ xử lý tuần tự các tài khoản đã lưu.
               </p>
               <div class="btn-row login-actions">
                 <button class="btn-util" id="saveLoginBtn" type="button">
                   Lưu thông tin
                 </button>
                 <button class="btn-util" id="clearLoginBtn" type="button">
-                  Xóa thông tin
+                  Xóa tất cả tài khoản
+                </button>
+              </div>
+              <div class="btn-row">
+                <button class="btn-util" id="testPlutoAccountsBtn" type="button">
+                  Check lần lượt Plutomall
+                </button>
+                <button class="btn-util" id="testLilithAccountsBtn" type="button">
+                  Check lần lượt Lilith
                 </button>
               </div>
               <div class="btn-row">
                 <button class="btn-util" id="testPlutoReloginBtn" type="button">
-                  Check Plutomall
+                  <span class="util-icon" aria-hidden="true">↻</span>
+                  <span>Pluto</span>
                 </button>
                 <button class="btn-util" id="testLilithReloginBtn" type="button">
-                  CheckLilith Store
+                  <span class="util-icon" aria-hidden="true">↻</span>
+                  <span>Lilith</span>
                 </button>
               </div>
               <div
@@ -182,7 +165,7 @@
           <section class="settings-section" aria-labelledby="configTitle">
             <h3 class="settings-section-title" id="configTitle">Xuất / nhập cấu hình</h3>
             <p class="login-note config-warning">
-              File xuất có thể chứa mật khẩu ở dạng văn bản thuần. Chỉ lưu trữ
+              File xuất có thể chứa mật khẩu hoặc token ở dạng văn bản thuần. Chỉ lưu trữ
               và chia sẻ file ở nơi an toàn.
             </p>
             <div class="config-selection-actions">
@@ -214,20 +197,16 @@
                 Bật Auto kiểm tra
               </label>
               <label>
-                <input type="checkbox" value="plutomallUsername" />
-                Tài khoản Plutomall
+                <input type="checkbox" value="storeAccounts" />
+                Tài khoản và mật khẩu cửa hàng
               </label>
               <label>
-                <input type="checkbox" value="plutomallPassword" />
-                Mật khẩu Plutomall
+                <input type="checkbox" value="favoriteRoleIds" />
+                Nhân vật yêu thích
               </label>
               <label>
-                <input type="checkbox" value="lilithstoreUsername" />
-                Tài khoản Lilith Store
-              </label>
-              <label>
-                <input type="checkbox" value="lilithstorePassword" />
-                Mật khẩu Lilith Store
+                <input type="checkbox" value="tokens" />
+                Token
               </label>
             </div>
             <div class="btn-row config-file-actions">
@@ -289,6 +268,10 @@
               </label>
             </div>
           </div>
+          <label class="account-picker">
+            <span>Tài khoản</span>
+            <select id="activeAccountSelect"></select>
+          </label>
         </div>
         <div class="card-body">
           <div class="btn-row">

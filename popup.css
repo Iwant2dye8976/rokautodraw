@@ -89,7 +89,7 @@ body {
     align-self: center;
     color: var(--ink-60);
     font-family: "Anthropic Mono", "SFMono-Regular", Consolas, monospace;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: -0.35px;
     font-variant-numeric: tabular-nums;
@@ -369,6 +369,87 @@ body {
     display: none;
 }
 
+.saved-accounts {
+    display: grid;
+    gap: 10px;
+}
+
+.saved-account {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: #faf9f5;
+}
+
+.saved-account-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--ink);
+}
+
+.btn-util.remove-account-btn {
+    flex: 0 0 40px;
+    width: 40px;
+    min-height: 40px;
+    padding: 0;
+    color: #a83232;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.util-icon {
+    flex: 0 0 auto;
+    font-size: 16px;
+    line-height: 1;
+}
+
+#testPlutoReloginBtn,
+#testLilithReloginBtn {
+    min-width: 0;
+    min-height: 40px;
+    padding: 6px 8px;
+    gap: 4px;
+}
+
+#testPlutoReloginBtn span:last-child,
+#testLilithReloginBtn span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.add-account-btn {
+    justify-self: start;
+}
+
+.account-picker {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 10px;
+    color: var(--ink-60);
+    font-size: 11px;
+}
+
+.account-picker[hidden] {
+    display: none;
+}
+
+.account-picker select {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #b7b4ab;
+    border-radius: var(--r-md);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+}
+
 .login-field {
     display: grid;
     gap: 4px;
@@ -579,8 +660,13 @@ body {
 
 .btn-row {
     display: flex;
+    min-width: 0;
     gap: 8px;
     margin-bottom: 8px;
+}
+
+.btn-row > .btn-util {
+    min-width: 0;
 }
 
 .btn-row:last-child {
