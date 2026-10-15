@@ -20,7 +20,22 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function checkAndSkipTour() {
+    const skipTourBtn = document.querySelector("#skipTourBtn");
+    if (skipTourBtn) {
+        try {
+            skipTourBtn.click();
+            console.log("[LilithDraw] Clicked #skipTourBtn");
+        } catch (e) {
+            console.warn("[LilithDraw] Failed to click #skipTourBtn:", e);
+        }
+        return true;
+    }
+    return false;
+}
+
 function findPasswordTab() {
+    checkAndSkipTour();
     for (const selector of PASSWORD_TAB_SELECTORS) {
         const tab = document.querySelector(selector);
         if (tab) return tab;
@@ -104,6 +119,10 @@ function reportFinished(success, error) {
 }
 
 (async () => {
+    if (checkAndSkipTour()) {
+        await delay(300);
+    }
+
     let mall;
     try {
         const credentials = await new Promise((resolve, reject) => {
@@ -135,6 +154,7 @@ function reportFinished(success, error) {
 
         const passwordTab = await waitForElement(findPasswordTab);
         if (!passwordTab) throw new Error("Không tìm thấy tab đăng nhập bằng mật khẩu trên passport.");
+        checkAndSkipTour();
         passwordTab.click();
 
         const passwordPanel = await waitForElement(findPasswordPanel);
