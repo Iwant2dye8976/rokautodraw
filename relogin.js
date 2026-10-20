@@ -94,17 +94,29 @@ function setInputValue(input, value) {
     input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-async function waitForStoreRedirect(mall, timeoutMs = 45000) {
+async function waitForStoreRedirectOrError(mall, passwordPanel, timeoutMs = 20000) {
     const config = STORE_CONFIG[mall];
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         if (
             location.origin === config.storeOrigin &&
             location.pathname.startsWith(config.storePath)
-        ) return true;
+        ) return { redirected: true };
+
+        const errorEl = passwordPanel?.querySelector(
+            '[role="alert"], .ant-form-item-explain-error, .ant-message-error'
+        );
+        const errorText = errorEl?.textContent?.trim();
+        if (errorText) {
+            return { redirected: false, error: errorText };
+        }
+
         await delay(300);
     }
-    return false;
+    return {
+        redirected: false,
+        error: `Passport chưa chuyển về ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"} sau khi gửi đăng nhập.`
+    };
 }
 
 function reportFinished(success, error) {
@@ -160,8 +172,15 @@ function reportFinished(success, error) {
         const passwordPanel = await waitForElement(findPasswordPanel);
         if (!passwordPanel) throw new Error("Tab mật khẩu đã chọn nhưng form chưa xuất hiện.");
         const username = await waitForElement(() =>
-            passwordPanel.querySelector('[id="1791530682711"]') ||
+            passwordPanel.querySelector('#plogin_username') ||
+            passwordPanel.querySelector('#plogin_account') ||
+            passwordPanel.querySelector('input[name="username"]') ||
+            passwordPanel.querySelector('input[name="account"]') ||
+            passwordPanel.querySelector('input[autocomplete="username"]') ||
             passwordPanel.querySelector('input[placeholder*="địa chỉ e-mail" i]') ||
+            passwordPanel.querySelector('input[placeholder*="email" i]') ||
+            passwordPanel.querySelector('input[placeholder*="tài khoản" i]') ||
+            passwordPanel.querySelector('input[type="email"]') ||
             passwordPanel.querySelector('input[type="text"]')
         );
         const password = passwordPanel.querySelector(PASSWORD_INPUT_SELECTOR);
@@ -182,14 +201,9 @@ function reportFinished(success, error) {
         if (!submit) throw new Error("Không tìm thấy nút đăng nhập trong tab mật khẩu.");
         await delay(600);
         submit.click();
-        if (!await waitForStoreRedirect(mall)) {
-            const errorText = passwordPanel.querySelector(
-                '[role="alert"], .ant-form-item-explain-error, .ant-message-error'
-            )?.textContent?.trim();
-            reportFinished(
-                false,
-                errorText || `Passport chưa chuyển về ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"} sau khi gửi đăng nhập.`
-            );
+        const outcome = await waitForStoreRedirectOrError(mall, passwordPanel);
+        if (!outcome.redirected) {
+            reportFinished(false, outcome.error);
         }
     } catch (error) {
         console.error("[LilithDraw] Store auto-login failed:", error);

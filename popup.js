@@ -17,6 +17,92 @@ const autoReloginCheckbox = document.getElementById("autoReloginEnabled");
 const autoReloginToggleLabel = document.getElementById("autoReloginToggleLabel");
 const loginSettingsStatus = document.getElementById("loginSettingsStatus");
 const configSettingsStatus = document.getElementById("configSettingsStatus");
+const themeToggleBtn = document.getElementById("themeToggleBtn");
+const currentThemeLabel = document.getElementById("currentThemeLabel");
+const themeRadios = [...document.querySelectorAll('input[name="themeMode"]')];
+
+const SVG_ICONS = {
+    copy: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" /><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" /></svg>`,
+    check: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-6" /></svg>`,
+    starFilled: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="8 1.5 10.2 5.8 15 6.5 11.5 9.9 12.3 14.5 8 12.2 3.7 14.5 4.5 9.9 1 6.5 5.8 5.8 8 1.5" /></svg>`,
+    starOutline: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="8 1.5 10.2 5.8 15 6.5 11.5 9.9 12.3 14.5 8 12.2 3.7 14.5 4.5 9.9 1 6.5 5.8 5.8 8 1.5" /></svg>`,
+    arrowLeft: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12.5" y1="8" x2="3.5" y2="8" /><polyline points="7.5 12 3.5 8 7.5 4" /></svg>`,
+    close: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="4" x2="4" y2="12" /><line x1="4" y1="4" x2="12" y2="12" /></svg>`,
+};
+
+let currentThemeSetting = "system";
+
+function getEffectiveTheme(choice) {
+    if (choice === "dark" || choice === "light") {
+        return choice;
+    }
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(choice) {
+    currentThemeSetting = choice || "system";
+    const effective = getEffectiveTheme(currentThemeSetting);
+    document.documentElement.setAttribute("data-theme", effective);
+
+    if (themeToggleBtn) {
+        const nextTheme = effective === "dark" ? "sáng" : "tối";
+        themeToggleBtn.setAttribute("aria-label", `Chuyển sang chế độ ${nextTheme}`);
+        themeToggleBtn.setAttribute("title", `Chuyển sang chế độ ${nextTheme}`);
+    }
+
+    if (currentThemeLabel) {
+        currentThemeLabel.textContent = effective === "dark" ? "Tối" : "Sáng";
+    }
+
+    for (const radio of themeRadios) {
+        radio.checked = radio.value === currentThemeSetting;
+    }
+}
+
+try {
+    const darkModeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+    darkModeMedia.addEventListener("change", () => {
+        if (currentThemeSetting === "system") {
+            applyTheme("system");
+        }
+    });
+} catch {
+    // Non-fatal fallback
+}
+
+async function setThemeMode(newMode) {
+    applyTheme(newMode);
+    try {
+        await chrome.storage.local.set({ theme: newMode });
+    } catch (error) {
+        console.error("Failed to save theme setting:", error);
+    }
+}
+
+if (themeToggleBtn) {
+    themeToggleBtn.addEventListener("click", () => {
+        const currentEffective = getEffectiveTheme(currentThemeSetting);
+        const nextTheme = currentEffective === "dark" ? "light" : "dark";
+        setThemeMode(nextTheme);
+    });
+}
+
+for (const radio of themeRadios) {
+    radio.addEventListener("change", (e) => {
+        if (e.target.checked) {
+            setThemeMode(e.target.value);
+        }
+    });
+}
+
+(async () => {
+    try {
+        const { theme } = await chrome.storage.local.get("theme");
+        applyTheme(theme || "system");
+    } catch {
+        applyTheme("system");
+    }
+})();
 
 function updateSwitchToggleLabels() {
     if (autoCheckToggleLabel && autoCheckCheckbox) {
@@ -36,6 +122,7 @@ const CONFIG_SETTING_VALIDATORS = {
     autoReloginEnabled: value => typeof value === "boolean",
     autoCheckIntervalMinutes: value => Number.isSafeInteger(value) && value >= 1,
     autoCheckEnabled: value => typeof value === "boolean",
+    theme: value => typeof value === "string" && ["light", "dark", "system"].includes(value),
     storeAccounts: value => value && typeof value === "object" &&
         !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
             Array.isArray(value[mall]) &&
@@ -367,8 +454,29 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
     }
 
     for (const role of displayRoles) {
+        const roleId = String(role.roleId ?? "");
+        const roleName = String(role.name ?? "Không rõ tên");
         const div = document.createElement("div");
         div.className = "char-row";
+        div.dataset.roleId = roleId;
+        div.setAttribute("role", "button");
+        div.setAttribute("tabindex", "0");
+        div.setAttribute("aria-label", `Xem lịch sử quay của ${roleName}`);
+        div.title = `Xem lịch sử quay của ${roleName}`;
+        div.addEventListener("click", (e) => {
+            if (e.target.closest("button") || e.target.closest(".char-favorite-btn") || e.target.closest(".char-copy-btn")) {
+                return;
+            }
+            openCharacterHistory(roleId, roleName);
+        });
+        div.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                if (e.target.closest("button")) return;
+                e.preventDefault();
+                openCharacterHistory(roleId, roleName);
+            }
+        });
+
         const avatarWrap = document.createElement("span");
         avatarWrap.className = "char-avatar";
         const avatar = document.createElement("img");
@@ -380,8 +488,6 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
 
         const nameWrap = document.createElement("span");
         nameWrap.className = "char-name";
-        const roleId = String(role.roleId ?? "");
-        const roleName = String(role.name ?? "Không rõ tên");
         const name = document.createElement("span");
         name.className = "char-history";
         name.dataset.roleId = roleId;
@@ -392,12 +498,13 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
         favoriteButton.type = "button";
         favoriteButton.className = "char-favorite-btn";
         const isFavorite = favoritePositions.has(roleId);
-        favoriteButton.textContent = isFavorite ? "★" : "☆";
+        favoriteButton.innerHTML = isFavorite ? SVG_ICONS.starFilled : SVG_ICONS.starOutline;
         favoriteButton.title = isFavorite ? "Bỏ yêu thích" : "Thêm vào yêu thích";
         favoriteButton.setAttribute("aria-label", favoriteButton.title);
         favoriteButton.setAttribute("aria-pressed", String(isFavorite));
         if (isFavorite) favoriteButton.classList.add("is-favorite");
-        favoriteButton.addEventListener("click", async () => {
+        favoriteButton.addEventListener("click", async (e) => {
+            e.stopPropagation();
             try {
                 const savedFavorites = await chrome.storage.local.get(favoritesKey);
                 const updatedFavorites = new Set(
@@ -423,13 +530,14 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
         const copyButton = document.createElement("button");
         copyButton.type = "button";
         copyButton.className = "char-copy-btn";
-        copyButton.textContent = "⧉";
+        copyButton.innerHTML = SVG_ICONS.copy;
         copyButton.title = "Sao chép ID và tên nhân vật";
         copyButton.setAttribute("aria-label", "Sao chép ID và tên nhân vật");
-        copyButton.addEventListener("click", async () => {
+        copyButton.addEventListener("click", async (e) => {
+            e.stopPropagation();
             try {
                 await navigator.clipboard.writeText(`ID: ${roleId} - ${roleName}`);
-                copyButton.textContent = "✓";
+                copyButton.innerHTML = SVG_ICONS.check;
                 copyButton.title = "Đã sao chép";
                 copyButton.setAttribute("aria-label", "Đã sao chép thông tin nhân vật");
             } catch (error) {
@@ -439,7 +547,7 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
                 copyButton.setAttribute("aria-label", "Không thể sao chép thông tin nhân vật");
             }
             window.setTimeout(() => {
-                copyButton.textContent = "⧉";
+                copyButton.innerHTML = SVG_ICONS.copy;
                 copyButton.title = "Sao chép ID và tên nhân vật";
                 copyButton.setAttribute("aria-label", "Sao chép ID và tên nhân vật");
             }, 1500);
@@ -586,31 +694,32 @@ async function fetchAndRender(mall) {
     });
 }
 
+function openCharacterHistory(roleId, roleName) {
+    const mall = getSelectedMall();
+    showHistoryLoading(roleName);
+    chrome.runtime.sendMessage(
+        {
+            action: "getDrawHistory",
+            roleId,
+            mall,
+            accountId: getSelectedAccountId(),
+        },
+        (res) => {
+            if (chrome.runtime.lastError) {
+                showHistoryError(chrome.runtime.lastError.message);
+                return;
+            }
+            if (res?.error || !res?.character || !res?.history) {
+                showHistoryError(res?.error || "Phản hồi lịch sử không hợp lệ");
+                return;
+            }
+            showHistory(res.character, res.history);
+        }
+    );
+}
+
 function attachHistoryListeners() {
-    for (const el of document.querySelectorAll(".char-history")) {
-        el.addEventListener("click", () => {
-            const mall = getSelectedMall();
-            showHistoryLoading(el.textContent);
-            chrome.runtime.sendMessage(
-                {
-                    action: "getDrawHistory",
-                    roleId: el.dataset.roleId,
-                    mall,
-                    accountId: getSelectedAccountId(),
-                },
-                (res) => {
-                if (chrome.runtime.lastError) {
-                    showHistoryError(chrome.runtime.lastError.message);
-                    return;
-                }
-                if (res?.error || !res?.character || !res?.history) {
-                    showHistoryError(res?.error || "Phản hồi lịch sử không hợp lệ");
-                    return;
-                }
-                showHistory(res.character, res.history);
-            });
-        });
-    }
+    // Listeners are attached directly to each .char-row during renderChars()
 }
 
 function showHistory(character, history) {
@@ -622,7 +731,7 @@ function showHistory(character, history) {
     div.id = "detailView";
     div.innerHTML = `
     <nav class="detail-nav">
-      <button id="backBtn" class="back-btn">‹ Quay lại</button>
+      <button id="backBtn" class="back-btn">${SVG_ICONS.arrowLeft}<span>Quay lại</span></button>
       <span class="detail-nav-title">Lịch sử quay</span>
     </nav>
     <div class="content">
@@ -742,7 +851,7 @@ function showHistoryLoading(name) {
     div.id = "detailView";
     div.innerHTML = `
     <nav class="detail-nav">
-      <button id="backBtn" class="back-btn">‹ Quay lại</button>
+      <button id="backBtn" class="back-btn">${SVG_ICONS.arrowLeft}<span>Quay lại</span></button>
       <span class="detail-nav-title">Lịch sử quay</span>
     </nav>
     <div class="content">
@@ -820,7 +929,7 @@ copyTokenButton.addEventListener("click", async () => {
 
     try {
         await navigator.clipboard.writeText(token);
-        copyTokenButton.textContent = "✓";
+        copyTokenButton.innerHTML = SVG_ICONS.check;
         copyTokenButton.title = "Đã sao chép";
         copyTokenButton.setAttribute("aria-label", "Đã sao chép token");
         tokenCopyStatus.textContent = "Đã sao chép token.";
@@ -832,7 +941,7 @@ copyTokenButton.addEventListener("click", async () => {
         tokenCopyStatus.textContent = `Không thể sao chép token: ${error.message}`;
     }
     window.setTimeout(() => {
-        copyTokenButton.textContent = "⧉";
+        copyTokenButton.innerHTML = SVG_ICONS.copy;
         copyTokenButton.title = "Sao chép token";
         copyTokenButton.setAttribute("aria-label", "Sao chép token");
     }, 1500);
@@ -959,7 +1068,7 @@ function renderAccountRows(mall) {
         const remove = document.createElement("button");
         remove.className = "btn-util remove-account-btn";
         remove.type = "button";
-        remove.textContent = "×";
+        remove.innerHTML = SVG_ICONS.close;
         remove.title = "Xóa tài khoản";
         remove.setAttribute("aria-label", "Xóa tài khoản");
         remove.addEventListener("click", (e) => {
@@ -1484,6 +1593,7 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
             autoReloginEnabled: autoReloginCheckbox.checked,
             autoCheckIntervalMinutes: Number(autoCheckIntervalInput.value),
             autoCheckEnabled: autoCheckCheckbox.checked,
+            theme: currentThemeSetting,
         };
         const settings = {};
         for (const key of selectedKeys) {
@@ -1678,6 +1788,9 @@ importConfigFile.addEventListener("change", async () => {
         if (Object.prototype.hasOwnProperty.call(importedSettings, "autoReloginEnabled")) {
             autoReloginCheckbox.checked = importedSettings.autoReloginEnabled;
         }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "theme")) {
+            applyTheme(importedSettings.theme);
+        }
         updateSwitchToggleLabels();
         if (Object.prototype.hasOwnProperty.call(importedSettings, "storeAccounts")) {
             accountsByMall = importedSettings.storeAccounts;
@@ -1710,6 +1823,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
             updateIntervalPresetActive(val);
         }
     }
+    if (changes.theme) {
+        applyTheme(changes.theme.newValue || "system");
+    }
     if (changes.autoReloginEnabled) {
         autoReloginCheckbox.checked = changes.autoReloginEnabled.newValue === true;
         updateSwitchToggleLabels();
@@ -1730,6 +1846,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     const drawLogKey = accountStorageKey(mall, accountId, "drawLog");
     if (changes[drawLogKey]) {
         renderDrawLog(changes[drawLogKey].newValue);
+    }
+    const isDrawingKey = accountStorageKey(mall, accountId, "isDrawing");
+    if (changes[isDrawingKey]) {
+        const isDrawing = changes[isDrawingKey].newValue === true;
+        const btn = document.getElementById("drawNowBtn");
+        if (btn) {
+            btn.disabled = isDrawing;
+            btn.textContent = isDrawing ? "Đang quay…" : "Quay thưởng ngay";
+        }
     }
     if (
         changes[accountStorageKey(mall, accountId, "token")] ||
@@ -1804,6 +1929,12 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             btn.textContent = "Quay thưởng ngay";
             return;
         }
+        if (res?.drawsLeft === 0) {
+            btn.disabled = false;
+            btn.textContent = "Quay thưởng ngay";
+            logEl.textContent = "Kiểm tra hoàn tất: không còn lượt quay nào.";
+            return;
+        }
 
         const pollStartedAt = Date.now();
         const poll = setInterval(async () => {
@@ -1861,7 +1992,9 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             "plutomallUsername",
             "plutomallPassword",
             "autoReloginStatus",
+            "theme",
         ]);
+        applyTheme(settings.theme || "system");
         autoCheckCheckbox.checked = settings.autoCheckEnabled !== false;
         autoCheckIntervalInput.value = Number.isSafeInteger(settings.autoCheckIntervalMinutes) &&
             settings.autoCheckIntervalMinutes >= 1

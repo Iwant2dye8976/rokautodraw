@@ -25,6 +25,29 @@ async function setSessionLock(key, locked) {
         console.warn(`[LilithDraw] Could not update session lock ${key}:`, e);
     }
 }
+
+async function cleanupStaleDrawStates() {
+    try {
+        const localData = await chrome.storage.local.get(null);
+        const updates = {};
+        for (const [key, value] of Object.entries(localData)) {
+            if (key.endsWith("_isDrawing") && value === true) {
+                const lockKey = `lock_draw_${key.replace(/_isDrawing$/, "_draw")}`;
+                const locked = await isSessionLocked(lockKey);
+                if (!locked) {
+                    updates[key] = false;
+                }
+            }
+        }
+        if (Object.keys(updates).length > 0) {
+            await chrome.storage.local.set(updates);
+            console.log("[LilithDraw] Reset stale drawing locks:", Object.keys(updates));
+        }
+    } catch (e) {
+        console.warn("[LilithDraw] Could not cleanup stale locks:", e);
+    }
+}
+void cleanupStaleDrawStates();
 const LILITH_STORE_URL = "https://passport-global.lilith.com/login?client_id=gamepay_lglo&game_id=10043&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fstore.lilith.com&app_id=2104267&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Flilith.png&client_name=LiLith+Store&redirect_to=https://store.lilith.com/rok?tab=perks&login_way=S-A&locale=vi";
 const PLUTOMALL_RELOGIN_URL = "https://passport.pup.vn/login?client_id=gamepay_lglo&game_id=10043&subject=vn_gamota&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fwww.plutomall.com.vn&app_id=6626468&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Fexternal_app.png&client_name=%E1%BB%A8ng+d%E1%BB%A5ng+kh%C3%A1c&redirect_to=https%3A%2F%2Fwww.plutomall.com.vn%2Frok%2Fvn%3Ftab%3Dperks&login_way=S-A&locale=vi";
 const RELOGIN_ORIGINS = {
@@ -226,7 +249,7 @@ async function getToken(mall, accountId) {
     return data.token ?? null;
 }
 
-async function fetchJson(url, options = {}, accountId) {
+async function fetchJson(url, options = {}, accountId, retries = 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
@@ -237,7 +260,16 @@ async function fetchJson(url, options = {}, accountId) {
             if (error.name === "AbortError") {
                 throw new Error("Yêu cầu hết thời gian chờ");
             }
+            if (retries > 0) {
+                await new Promise(r => setTimeout(r, 1000));
+                return fetchJson(url, options, accountId, retries - 1);
+            }
             throw new Error(`Lỗi kết nối: ${error.message}`);
+        }
+
+        if (response.status === 429 && retries > 0) {
+            await new Promise(r => setTimeout(r, 2000));
+            return fetchJson(url, options, accountId, retries - 1);
         }
 
         if (response.status === 401 || response.status === 403) {
@@ -326,6 +358,9 @@ async function openReloginWindow(mall, accountId) {
                 });
                 return true;
             } catch {
+                if (Number.isInteger(session.autoReloginTabId)) {
+                    try { await chrome.tabs.remove(session.autoReloginTabId); } catch {}
+                }
                 await chrome.storage.session.remove([
                     "autoReloginWindowId",
                     "autoReloginTabId",
@@ -338,17 +373,35 @@ async function openReloginWindow(mall, accountId) {
                     ...RELOGIN_SEQUENCE_KEYS,
                 ]);
             }
+        } else if (Number.isInteger(session.autoReloginTabId)) {
+            try { await chrome.tabs.remove(session.autoReloginTabId); } catch {}
         }
 
-        const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-        if (activeTab?.windowId === undefined) {
-            throw new Error("Không tìm thấy cửa sổ trình duyệt hiện tại");
+        let targetWindowId;
+        try {
+            const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+            if (activeTab?.windowId !== undefined) {
+                targetWindowId = activeTab.windowId;
+            }
+        } catch {}
+
+        if (targetWindowId === undefined) {
+            try {
+                const windows = await chrome.windows.getAll({ windowTypes: ["normal"] });
+                if (windows.length > 0) {
+                    targetWindowId = windows[0].id;
+                }
+            } catch {}
         }
-        const reloginTab = await chrome.tabs.create({
-            windowId: activeTab.windowId,
+
+        const createProps = {
             url: "about:blank",
             active: false,
-        });
+        };
+        if (targetWindowId !== undefined) {
+            createProps.windowId = targetWindowId;
+        }
+        const reloginTab = await chrome.tabs.create(createProps);
         if (reloginTab.id === undefined) throw new Error("Không tạo được tab đăng nhập");
 
         await chrome.storage.session.set({
@@ -483,7 +536,8 @@ chrome.webRequest.onSendHeaders.addListener(
                     await setStoreData(mall, { appUid, appId }, accountId);
                     console.log(`[LilithDraw][${mall}] appUid and appId captured`);
                     try {
-                        if (tab?.url?.includes("plutomall.com") || tab?.url?.includes("store.lilith.com")) {
+                        const isBackgroundRelogin = details.tabId === session.autoReloginTabId;
+                        if (!isBackgroundRelogin && (tab?.url?.includes("plutomall.com") || tab?.url?.includes("store.lilith.com"))) {
                             await chrome.action.openPopup();
                         }
                     } catch (e) {
@@ -647,6 +701,11 @@ async function refreshStoreAfterRelogin(mall, accountId) {
             "autoReloginReadyAt",
             "autoReloginAccountSwitch",
         ]);
+        if (Number.isInteger(autoReloginTabId)) {
+            try {
+                await chrome.tabs.remove(autoReloginTabId);
+            } catch {}
+        }
         activeReloginRefreshes.delete(autoReloginTabId);
         await continueReloginSequence(mall, accountId, refreshError);
     }
@@ -1056,10 +1115,29 @@ async function getTotalDrawsLeft(token, roles, mall, accountId) {
         await setStoreData(mall, { drawsLeft: 0, lastCheck }, accountId);
         return 0;
     }
-    const manifests = await Promise.all(
-        roles.map(role => getManifest(token, role, mall, accountId))
-    );
-    const counts = manifests.map(manifest => getRoleDrawCount(manifest, mall));
+    const counts = [];
+    const chunkSize = 3;
+    for (let i = 0; i < roles.length; i += chunkSize) {
+        const chunk = roles.slice(i, i + chunkSize);
+        const results = await Promise.allSettled(
+            chunk.map(role => getManifest(token, role, mall, accountId))
+        );
+        for (const res of results) {
+            if (res.status === "fulfilled") {
+                try {
+                    const count = getRoleDrawCount(res.value, mall);
+                    counts.push(count);
+                } catch (countErr) {
+                    console.warn(`[LilithDraw][${mall}] Error parsing role draw count:`, countErr);
+                }
+            } else {
+                console.warn(`[LilithDraw][${mall}] Failed to fetch manifest for role:`, res.reason);
+            }
+        }
+        if (i + chunkSize < roles.length) {
+            await new Promise(r => setTimeout(r, 200));
+        }
+    }
     // Lượt quay là dùng chung cho toàn bộ tài khoản (account-wide quota pool).
     // Không cộng dồn (total += count) vì các nhân vật cùng chia sẻ số lượt của tài khoản.
     const total = counts.length > 0 ? Math.max(...counts) : 0;
@@ -1202,6 +1280,11 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                             drawCount = 0;
                             await setStoreData(mall, { drawsLeft: 0, lastCheck: new Date().toLocaleString() }, accountId);
                             break;
+                        } else if (drawErr.status === 401 || drawErr.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
+                            log.push(`[${role.name}] Token đã hết hạn, dừng quay: ${errMsg}`);
+                            await reportProgress();
+                            isOutOfResources = true;
+                            return log;
                         } else {
                             throw drawErr;
                         }
@@ -1218,6 +1301,10 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                 await reportProgress();
                 isOutOfResources = true;
                 await setStoreData(mall, { drawsLeft: 0, lastCheck: new Date().toLocaleString() }, accountId);
+            } else if (e.status === 401 || e.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
+                log.push(`[${role.name}] Token đã hết hạn, dừng quay: ${errMsg}`);
+                await reportProgress();
+                return log;
             } else {
                 log.push(`[${role.name}] Lỗi: ${errMsg}`);
                 await reportProgress();
@@ -1491,6 +1578,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     "autoReloginReadyAt",
                     "autoReloginAccountSwitch",
                 ]);
+                if (Number.isInteger(autoReloginTabId)) {
+                    try {
+                        await chrome.tabs.remove(autoReloginTabId);
+                    } catch {}
+                }
                 await continueReloginSequence(
                     autoReloginMall,
                     autoReloginAccountId,

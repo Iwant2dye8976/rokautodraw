@@ -10,16 +10,24 @@
   <body>
     <!-- Top Navigation Header -->
     <header class="g-nav">
-      <div class="g-nav-main">
-        <div class="brand-group">
-          <span class="g-nav-brand">ROK Weekly Auto</span>
-        </div>
-        <div class="status-pill" role="status" aria-live="polite">
-          <span class="status-dot" id="statusDot"></span>
-          <span id="status">Chưa có token</span>
-        </div>
+      <div class="brand-group">
+        <span class="g-nav-brand">ROK Weekly Auto</span>
       </div>
-      <time class="utc-clock" id="utcClock" aria-label="Giờ UTC">UTC --:--:--</time>
+      <button
+        class="theme-toggle-btn"
+        id="themeToggleBtn"
+        type="button"
+        aria-label="Chuyển sang chế độ tối"
+        title="Chuyển sang chế độ tối"
+      >
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </svg>
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </button>
     </header>
 
     <main id="main">
@@ -43,7 +51,9 @@
             <label for="activeAccountSelect" class="input-label">Tài khoản</label>
             <div class="select-wrapper">
               <select id="activeAccountSelect"></select>
-              <span class="select-arrow" aria-hidden="true">▾</span>
+              <svg class="select-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 6l4 4 4-4" />
+              </svg>
             </div>
           </div>
         </div>
@@ -92,7 +102,11 @@
               aria-label="Xóa tìm kiếm"
               title="Xóa tìm kiếm"
               hidden
-            >×</button>
+            >
+              <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
           </div>
         </div>
         <div class="card-body">
@@ -250,11 +264,17 @@
               </div>
               <div class="btn-row">
                 <button class="btn-util" id="testPlutoReloginBtn" type="button">
-                  <span class="util-icon" aria-hidden="true">↻</span>
+                  <svg class="util-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
+                    <path d="M2 2v4h4" />
+                  </svg>
                   <span>Pluto</span>
                 </button>
                 <button class="btn-util" id="testLilithReloginBtn" type="button">
-                  <span class="util-icon" aria-hidden="true">↻</span>
+                  <svg class="util-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
+                    <path d="M2 2v4h4" />
+                  </svg>
                   <span>Lilith</span>
                 </button>
               </div>
@@ -264,6 +284,28 @@
                 role="status"
                 aria-live="polite"
               ></div>
+            </div>
+          </section>
+
+          <!-- Theme Mode Section -->
+          <section class="settings-section" aria-labelledby="themeTitle">
+            <div class="settings-section-head">
+              <h3 class="settings-section-title" id="themeTitle">Chế độ giao diện</h3>
+              <span class="settings-toggle-label" id="currentThemeLabel">Sáng</span>
+            </div>
+            <div class="segmented-control theme-segmented" role="radiogroup" aria-label="Chọn chế độ giao diện">
+              <label class="segmented-item">
+                <input type="radio" name="themeMode" value="system" />
+                <span>Hệ thống</span>
+              </label>
+              <label class="segmented-item">
+                <input type="radio" name="themeMode" value="light" checked />
+                <span>Sáng</span>
+              </label>
+              <label class="segmented-item">
+                <input type="radio" name="themeMode" value="dark" />
+                <span>Tối</span>
+              </label>
             </div>
           </section>
 
@@ -301,6 +343,10 @@
               <label>
                 <input type="checkbox" value="autoCheckEnabled" checked />
                 <span>Bật Auto kiểm tra</span>
+              </label>
+              <label>
+                <input type="checkbox" value="theme" checked />
+                <span>Chế độ giao diện (Sáng / Tối)</span>
               </label>
               <label>
                 <input type="checkbox" value="storeAccounts" />
@@ -343,7 +389,12 @@
                 type="button"
                 title="Sao chép token"
                 aria-label="Sao chép token"
-              >⧉</button>
+              >
+                <svg class="copy-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+                  <path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" />
+                </svg>
+              </button>
             </div>
             <textarea
               id="tokenBox"
@@ -366,6 +417,15 @@
         <div id="log" role="region" aria-live="polite" tabindex="0"></div>
       </section>
     </main>
+
+    <!-- Bottom Status Bar -->
+    <footer class="g-footer">
+      <div class="status-pill" role="status" aria-live="polite">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="status">Chưa có token</span>
+      </div>
+      <time class="utc-clock" id="utcClock" aria-label="Giờ UTC">UTC --:--:--</time>
+    </footer>
 
     <script src="popup.js"></script>
   </body>

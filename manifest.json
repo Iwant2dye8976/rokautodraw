@@ -6,7 +6,6 @@
     "storage",
     "tabs",
     "scripting",
-    "activeTab",
     "webRequest",
     "alarms",
     "notifications",
@@ -14,13 +13,10 @@
   ],
   "host_permissions": [
     "https://*.lilithgame.com/*",
+    "https://*.lilith.com/*",
     "https://store.lilith.com/*",
     "https://*.plutomall.com/*",
     "https://*.plutomall.com.vn/*",
-    "https://campaign-global.lilith.com/*",
-    "https://plat-campaign-api.lilithgame.com/*",
-    "https://q.lilithgame.com/*",
-    "https://passport-global.lilith.com/*",
     "https://passport.pup.vn/*"
   ],
   "background": {

@@ -1,5 +1,30 @@
 (async () => {
-    const surveyCsrf = document.querySelector('input#_csrf')?.value;
+    function waitForElement(selector, timeoutMs = 5000) {
+        return new Promise(resolve => {
+            const el = document.querySelector(selector);
+            if (el) return resolve(el);
+            let settled = false;
+            const observer = new MutationObserver(() => {
+                const found = document.querySelector(selector);
+                if (found && !settled) {
+                    settled = true;
+                    observer.disconnect();
+                    resolve(found);
+                }
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    observer.disconnect();
+                    resolve(document.querySelector(selector));
+                }
+            }, timeoutMs);
+        });
+    }
+
+    const csrfInput = await waitForElement("input#_csrf");
+    const surveyCsrf = csrfInput?.value;
     if (!surveyCsrf) {
         console.warn("[LilithDraw] Không tìm thấy CSRF token cho khảo sát");
         return;
