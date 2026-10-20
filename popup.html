@@ -106,12 +106,13 @@
 
       <!-- 3. Additional Settings Collapsible Card -->
       <section class="card additional-settings" aria-labelledby="additionalSettingsTitle">
-        <div class="card-head additional-settings-head">
+        <div class="card-head additional-settings-head" id="additionalSettingsHead">
           <span class="eyebrow" id="additionalSettingsTitle">Cài đặt mở rộng</span>
           <button
             class="settings-disclosure"
             id="additionalSettingsDisclosure"
             type="button"
+            title="Mở rộng Cài đặt mở rộng"
             aria-label="Mở rộng Cài đặt mở rộng"
             aria-expanded="false"
             aria-controls="additionalSettingsBody"
@@ -142,6 +143,18 @@
                 inputmode="numeric"
               />
             </label>
+            <div class="interval-presets" role="group" aria-label="Thời gian kiểm tra có sẵn">
+              <div class="interval-preset-chips">
+                <button type="button" class="preset-chip" data-minutes="60" title="1 giờ (60 phút - 24 lần/ngày)">1h</button>
+                <button type="button" class="preset-chip" data-minutes="120" title="2 giờ (120 phút - 12 lần/ngày)">2h</button>
+                <button type="button" class="preset-chip" data-minutes="180" title="3 giờ (180 phút - 8 lần/ngày)">3h</button>
+                <button type="button" class="preset-chip" data-minutes="240" title="4 giờ (240 phút - 6 lần/ngày)">4h</button>
+                <button type="button" class="preset-chip" data-minutes="360" title="6 giờ (360 phút - 4 lần/ngày)">6h</button>
+                <button type="button" class="preset-chip" data-minutes="480" title="8 giờ (480 phút - 3 lần/ngày)">8h</button>
+                <button type="button" class="preset-chip" data-minutes="720" title="12 giờ (720 phút - 2 lần/ngày)">12h</button>
+                <button type="button" class="preset-chip" data-minutes="1440" title="24 giờ (1440 phút - 1 lần/ngày)">24h</button>
+              </div>
+            </div>
             <div
               class="login-settings-status"
               id="autoCheckSettingsStatus"

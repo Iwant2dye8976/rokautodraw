@@ -28,6 +28,7 @@ function updateSwitchToggleLabels() {
 }
 const importConfigFile = document.getElementById("importConfigFile");
 const additionalSettingsDisclosure = document.getElementById("additionalSettingsDisclosure");
+const additionalSettingsHead = document.getElementById("additionalSettingsHead") || document.querySelector(".additional-settings-head");
 const additionalSettingsBody = document.getElementById("additionalSettingsBody");
 const CONFIG_FORMAT = "rok-weekly-auto-config";
 const CONFIG_VERSION = 1;
@@ -83,7 +84,7 @@ function updateUtcClock() {
 function showAccountViewLoading() {
     accountViewVersion++;
     cachedRoles = [];
-    setStatus("Đang tải dữ liệu…");
+    setStatus("Đang tải dữ liệu…", null);
     setCharsLoading();
     tokenBox.value = "";
     totalDrawsEl.textContent = "- lượt còn lại";
@@ -132,9 +133,51 @@ function isCurrentAccountView(mall, accountId, viewVersion) {
         accountId === getSelectedAccountId();
 }
 
-function setStatus(text, on = false) {
+function isJwtExpired(token) {
+    if (!token || typeof token !== "string") return false;
+    try {
+        const clean = token.replace(/^Bearer\s+/i, "").trim();
+        const parts = clean.split(".");
+        if (parts.length < 2) return false;
+        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const jsonStr = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+        const payload = JSON.parse(jsonStr);
+        if (typeof payload?.exp === "number") {
+            return Math.floor(Date.now() / 1000) >= payload.exp;
+        }
+    } catch {
+        // parsing failed or non-JWT token
+    }
+    return false;
+}
+
+function evaluateTokenStatus(token, isValidToken) {
+    if (!token) {
+        return { text: "Chưa có token", state: null };
+    }
+    if (isJwtExpired(token)) {
+        return { text: "Token đã hết hạn", state: false };
+    }
+    if (isValidToken === false) {
+        return { text: "Token không hợp lệ", state: false };
+    }
+    if (isValidToken === true) {
+        return { text: "Token OK", state: true };
+    }
+    return { text: "Token đã lưu", state: true };
+}
+
+function setStatus(text, state = null) {
     statusEl.textContent = text;
-    if (statusDot) statusDot.className = "status-dot" + (on ? " on" : " off");
+    if (statusDot) {
+        if (state === true || state === "on") {
+            statusDot.className = "status-dot on";
+        } else if (state === false || state === "off") {
+            statusDot.className = "status-dot off";
+        } else {
+            statusDot.className = "status-dot";
+        }
+    }
 }
 
 function showLog() {
@@ -191,9 +234,20 @@ function showMain() {
     document.getElementById("main").style.display = "";
 }
 
+function selectLoginTab(mall) {
+    for (const button of document.querySelectorAll("[data-login-tab]")) {
+        const selected = button.dataset.loginTab === mall;
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-selected", String(selected));
+        const panel = document.getElementById(button.getAttribute("aria-controls"));
+        if (panel) panel.hidden = !selected;
+    }
+}
+
 function syncRadio(mall) {
     const radio = document.querySelector(`input[name="store"][value="${mall}"]`);
     if (radio) radio.checked = true;
+    selectLoginTab(mall);
 }
 
 function getSelectedMall() {
@@ -422,7 +476,7 @@ async function renderCache(mall) {
         const { [drawLogKey]: drawLog } = await chrome.storage.local.get(drawLogKey);
         if (!isCurrentAccountView(mall, accountId, viewVersion)) return;
         if (!res?.hasToken) {
-            setStatus("Chưa có dữ liệu, hãy Capture Token");
+            setStatus("Chưa có token", null);
             setCharsEmpty("Chưa có dữ liệu, hãy Capture Token");
             tokenBox.value = "";
             totalDrawsEl.textContent = "- lượt còn lại";
@@ -434,11 +488,8 @@ async function renderCache(mall) {
         const { [tokenKey]: token } = await chrome.storage.local.get(tokenKey);
         if (!isCurrentAccountView(mall, accountId, viewVersion)) return;
 
-        setStatus(
-            res.isValidToken === false ? "Token không hợp lệ" :
-                res.isValidToken === true ? "Token OK" : "Token đã lưu",
-            res.isValidToken === true
-        );
+        const tokenEval = evaluateTokenStatus(token, res.isValidToken);
+        setStatus(tokenEval.text, tokenEval.state);
         tokenBox.value = token || "";
 
         renderDrawsLeft(res.drawsLeft);
@@ -471,7 +522,7 @@ async function fetchAndRender(mall) {
     const m = mall ?? getSelectedMall();
     const accountId = getSelectedAccountId();
     const viewVersion = ++accountViewVersion;
-    setStatus("Đang làm mới…");
+    setStatus("Đang làm mới…", null);
     setCharsLoading();
     return new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({ action: "refresh", mall: m, accountId }, async (res) => {
@@ -480,16 +531,24 @@ async function fetchAndRender(mall) {
                 return;
             }
             if (chrome.runtime.lastError) {
+                setStatus("Lỗi kết nối", false);
                 setCharsError("Lỗi kết nối extension");
                 return reject(new Error(chrome.runtime.lastError.message));
             }
             if (!res) {
+                setStatus("Lỗi phản hồi", false);
                 setCharsError("Extension không trả về dữ liệu");
                 return reject(new Error("Extension không trả về dữ liệu"));
             }
             if (res?.error) {
-                setStatus(res.error, false);
-                setCharsError(res.error);
+                const isExp = res.isExpired || res.isValidToken === false || /hết hạn|expired|invalid|401|403/i.test(res.error);
+                if (isExp) {
+                    setStatus("Token đã hết hạn", false);
+                    setCharsError("Token đã hết hạn. Vui lòng bấm Lấy Token để đăng nhập lại.");
+                } else {
+                    setStatus(res.error.length > 25 ? res.error.slice(0, 25) + "…" : res.error, false);
+                    setCharsError(res.error);
+                }
                 return reject(new Error(res.error));
             }
 
@@ -506,12 +565,12 @@ async function fetchAndRender(mall) {
                     resolve(null);
                     return;
                 }
-                setStatus(`Không thể tải token: ${error.message}`);
+                setStatus(`Lỗi: ${error.message}`, false);
                 reject(error);
                 return;
             }
 
-            setStatus(res.isValidToken ? "Token OK" : "Token không hợp lệ", !!res.isValidToken);
+            setStatus("Token OK", true);
             renderDrawsLeft(res.totalDrawsLeft);
 
             const roles = Array.isArray(res.roles) ? res.roles : [];
@@ -718,6 +777,7 @@ function showHistoryError(message) {
 for (const radio of document.querySelectorAll('input[name="store"]')) {
     radio.addEventListener("change", async () => {
         const mall = radio.value;
+        selectLoginTab(mall);
         showAccountViewLoading();
         await chrome.storage.local.set({ currentMall: mall });
         await renderActiveAccountPicker(mall);
@@ -730,15 +790,25 @@ function setLoginSettingsStatus(message) {
     loginSettingsStatus.textContent = message;
 }
 
-additionalSettingsDisclosure.addEventListener("click", () => {
+function toggleAdditionalSettings() {
+    if (!additionalSettingsDisclosure || !additionalSettingsBody) return;
     const expanded = additionalSettingsDisclosure.getAttribute("aria-expanded") !== "true";
     additionalSettingsBody.hidden = !expanded;
     additionalSettingsDisclosure.setAttribute("aria-expanded", String(expanded));
-    additionalSettingsDisclosure.setAttribute(
-        "aria-label",
-        `${expanded ? "Thu nhỏ" : "Mở rộng"} Cài đặt mở rộng`
-    );
-});
+    const label = `${expanded ? "Thu nhỏ" : "Mở rộng"} Cài đặt mở rộng`;
+    additionalSettingsDisclosure.setAttribute("aria-label", label);
+    additionalSettingsDisclosure.title = label;
+    if (additionalSettingsHead) {
+        additionalSettingsHead.title = label;
+    }
+}
+
+if (additionalSettingsHead) {
+    additionalSettingsHead.title = "Mở rộng Cài đặt mở rộng";
+    additionalSettingsHead.addEventListener("click", () => {
+        toggleAdditionalSettings();
+    });
+}
 
 const copyTokenButton = document.getElementById("copyTokenBtn");
 copyTokenButton.addEventListener("click", async () => {
@@ -782,8 +852,36 @@ autoCheckCheckbox.addEventListener("change", async () => {
     }
 });
 
+function updateIntervalPresetActive(minutes) {
+    for (const btn of document.querySelectorAll(".preset-chip")) {
+        const chipMinutes = Number(btn.dataset.minutes);
+        btn.classList.toggle("active", chipMinutes === minutes);
+    }
+}
+
+for (const btn of document.querySelectorAll(".preset-chip")) {
+    btn.addEventListener("click", async () => {
+        const minutes = Number(btn.dataset.minutes);
+        autoCheckIntervalInput.value = String(minutes);
+        updateIntervalPresetActive(minutes);
+        try {
+            await chrome.storage.local.set({ autoCheckIntervalMinutes: minutes });
+            const hours = minutes / 60;
+            const hourText = hours >= 1 ? ` (${hours} giờ)` : "";
+            autoCheckSettingsStatus.textContent = `Đã đặt thời gian kiểm tra mỗi ${minutes} phút${hourText}.`;
+        } catch (error) {
+            autoCheckSettingsStatus.textContent = `Không thể lưu thời gian kiểm tra: ${error.message}`;
+        }
+    });
+}
+
+autoCheckIntervalInput.addEventListener("input", () => {
+    updateIntervalPresetActive(Number(autoCheckIntervalInput.value));
+});
+
 autoCheckIntervalInput.addEventListener("change", async () => {
     const intervalMinutes = Number(autoCheckIntervalInput.value);
+    updateIntervalPresetActive(intervalMinutes);
     if (!Number.isSafeInteger(intervalMinutes) || intervalMinutes < 1) {
         autoCheckSettingsStatus.textContent = "Thời gian kiểm tra phải là số phút nguyên từ 1 trở lên.";
         return;
@@ -791,22 +889,14 @@ autoCheckIntervalInput.addEventListener("change", async () => {
 
     try {
         await chrome.storage.local.set({ autoCheckIntervalMinutes: intervalMinutes });
-        autoCheckSettingsStatus.textContent = `Đã đặt thời gian kiểm tra mỗi ${intervalMinutes} phút.`;
+        const hourText = intervalMinutes % 60 === 0 ? ` (${intervalMinutes / 60} giờ)` : "";
+        autoCheckSettingsStatus.textContent = `Đã đặt thời gian kiểm tra mỗi ${intervalMinutes} phút${hourText}.`;
     } catch (error) {
         autoCheckSettingsStatus.textContent = `Không thể lưu thời gian kiểm tra: ${error.message}`;
     }
 });
 
-function selectLoginTab(mall) {
-    for (const button of document.querySelectorAll("[data-login-tab]")) {
-        const selected = button.dataset.loginTab === mall;
-        button.classList.toggle("active", selected);
-        button.setAttribute("aria-selected", String(selected));
-        document.getElementById(button.getAttribute("aria-controls")).hidden = !selected;
-    }
-}
-
-selectLoginTab("plutomall");
+selectLoginTab(getSelectedMall());
 
 function renderAccountRows(mall) {
     const container = document.getElementById(`${mall}Accounts`);
@@ -837,30 +927,43 @@ function renderAccountRows(mall) {
         disclosure.type = "button";
         disclosure.setAttribute("aria-expanded", String(isExpanded));
         disclosure.setAttribute("aria-controls", body.id);
-        disclosure.setAttribute(
-            "aria-label",
-            `${isExpanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`
-        );
-        disclosure.title = `${isExpanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`;
+        const disclosureLabel = `${isExpanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`;
+        disclosure.setAttribute("aria-label", disclosureLabel);
+        disclosure.title = disclosureLabel;
         disclosure.innerHTML = `<svg class="disclosure-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6l4.5 4.5 4.5-4.5" /></svg>`;
-        disclosure.addEventListener("click", () => {
+
+        function toggleAccount() {
             const expanded = disclosure.getAttribute("aria-expanded") !== "true";
             disclosure.setAttribute("aria-expanded", String(expanded));
-            disclosure.setAttribute(
-                "aria-label",
-                `${expanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`
-            );
-            disclosure.title = `${expanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`;
+            const nextLabel = `${expanded ? "Thu nhỏ" : "Mở rộng"} Tài khoản ${index + 1}`;
+            disclosure.setAttribute("aria-label", nextLabel);
+            disclosure.title = nextLabel;
+            heading.title = nextLabel;
             body.hidden = !expanded;
             accountExpandedState.set(account.id, expanded);
+        }
+
+        heading.title = disclosureLabel;
+        heading.addEventListener("click", (e) => {
+            if (e.target.closest(".remove-account-btn")) return;
+            toggleAccount();
         });
+
+        row.addEventListener("click", (e) => {
+            if (!body.hidden) return;
+            if (e.target.closest(".remove-account-btn")) return;
+            if (e.target.closest(".saved-account-heading")) return;
+            toggleAccount();
+        });
+
         const remove = document.createElement("button");
         remove.className = "btn-util remove-account-btn";
         remove.type = "button";
         remove.textContent = "×";
         remove.title = "Xóa tài khoản";
         remove.setAttribute("aria-label", "Xóa tài khoản");
-        remove.addEventListener("click", () => {
+        remove.addEventListener("click", (e) => {
+            e.stopPropagation();
             accountExpandedState.delete(account.id);
             accountsByMall[mall] = accountsByMall[mall].filter(item => item.id !== account.id);
             renderAccountRows(mall);
@@ -1148,7 +1251,15 @@ for (const accountContainer of document.querySelectorAll(".saved-accounts")) {
 }
 
 for (const button of document.querySelectorAll("[data-login-tab]")) {
-    button.addEventListener("click", () => selectLoginTab(button.dataset.loginTab));
+    button.addEventListener("click", () => {
+        const mall = button.dataset.loginTab;
+        selectLoginTab(mall);
+        const radio = document.querySelector(`input[name="store"][value="${mall}"]`);
+        if (radio && !radio.checked) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event("change"));
+        }
+    });
 }
 
 autoReloginCheckbox.addEventListener("change", async () => {
@@ -1562,6 +1673,7 @@ importConfigFile.addEventListener("change", async () => {
         }
         if (Object.prototype.hasOwnProperty.call(importedSettings, "autoCheckIntervalMinutes")) {
             autoCheckIntervalInput.value = String(importedSettings.autoCheckIntervalMinutes);
+            updateIntervalPresetActive(Number(importedSettings.autoCheckIntervalMinutes));
         }
         if (Object.prototype.hasOwnProperty.call(importedSettings, "autoReloginEnabled")) {
             autoReloginCheckbox.checked = importedSettings.autoReloginEnabled;
@@ -1591,12 +1703,27 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         autoCheckCheckbox.checked = changes.autoCheckEnabled.newValue !== false;
         updateSwitchToggleLabels();
     }
+    if (changes.autoCheckIntervalMinutes) {
+        const val = changes.autoCheckIntervalMinutes.newValue;
+        if (Number.isSafeInteger(val)) {
+            autoCheckIntervalInput.value = String(val);
+            updateIntervalPresetActive(val);
+        }
+    }
     if (changes.autoReloginEnabled) {
         autoReloginCheckbox.checked = changes.autoReloginEnabled.newValue === true;
         updateSwitchToggleLabels();
     }
     if (changes.autoReloginStatus?.newValue) {
         setLoginSettingsStatus(changes.autoReloginStatus.newValue);
+    }
+    if (changes.currentMall?.newValue) {
+        const newMall = changes.currentMall.newValue;
+        if (newMall !== getSelectedMall()) {
+            syncRadio(newMall);
+            void renderActiveAccountPicker(newMall);
+            void renderCache(newMall);
+        }
     }
     const mall = getSelectedMall();
     const accountId = getSelectedAccountId();
@@ -1606,6 +1733,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     }
     if (
         changes[accountStorageKey(mall, accountId, "token")] ||
+        changes[accountStorageKey(mall, accountId, "isValidToken")] ||
         changes[accountStorageKey(mall, accountId, "roles")] ||
         changes[accountStorageKey(mall, accountId, "drawsLeft")]
     ) {
@@ -1631,7 +1759,7 @@ document.getElementById("captureBtn").addEventListener("click", async () => {
         } else {
             await chrome.tabs.create({ url: MALL_URLS[mall], active: true });
         }
-        setStatus("Đã mở cửa hàng; token sẽ được lưu tự động");
+        setStatus("Đã mở cửa hàng; token sẽ được lưu tự động", null);
     } catch (error) {
         setStatus(`Không thể mở cửa hàng: ${error.message}`);
     }
@@ -1670,7 +1798,8 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             return;
         }
         if (res?.error) {
-            setStatus(res.error);
+            const isExp = /hết hạn|expired|invalid|401|403/i.test(res.error);
+            setStatus(isExp ? "Token đã hết hạn" : (res.error.length > 25 ? res.error.slice(0, 25) + "…" : res.error), false);
             btn.disabled = false;
             btn.textContent = "Quay thưởng ngay";
             return;
@@ -1705,11 +1834,13 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             const lastLine = drawLog?.[drawLog.length - 1] || "";
             const isFinished = isDrawing === false ||
                 lastLine === "Done!" ||
-                lastLine.startsWith("Lỗi") ||
+                lastLine.includes("Lỗi") ||
+                lastLine.includes("hết lượt") ||
+                lastLine.includes("không còn lượt quay") ||
                 lastLine === "Không tìm thấy nhân vật nào" ||
                 lastLine.startsWith("Đã tạm dừng");
 
-            if (isFinished && (Date.now() - pollStartedAt > 1500 || lastLine === "Done!")) {
+            if (isFinished && (Date.now() - pollStartedAt > 1500 || lastLine === "Done!" || lastLine.includes("hết lượt") || lastLine.includes("không còn lượt quay"))) {
                 clearInterval(poll);
                 btn.disabled = false;
                 btn.textContent = "Quay thưởng ngay";
@@ -1736,6 +1867,7 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             settings.autoCheckIntervalMinutes >= 1
             ? String(settings.autoCheckIntervalMinutes)
             : "60";
+        updateIntervalPresetActive(Number(autoCheckIntervalInput.value));
         autoReloginCheckbox.checked = settings.autoReloginEnabled === true;
         updateSwitchToggleLabels();
         if (settings.autoReloginStatus) setLoginSettingsStatus(settings.autoReloginStatus);

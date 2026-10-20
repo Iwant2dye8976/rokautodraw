@@ -799,6 +799,22 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding-bottom: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.additional-settings-head:hover .settings-disclosure {
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.additional-settings-head:hover .disclosure-chevron {
+  color: var(--ink);
+}
+
+.additional-settings-head:active .settings-disclosure {
+  transform: scale(0.96);
 }
 
 .additional-settings-head .eyebrow {
@@ -828,6 +844,7 @@ textarea:focus-visible {
   width: 12px;
   height: 12px;
   color: var(--ink-60);
+  pointer-events: none;
   transition: transform var(--duration-base) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
 }
@@ -1010,6 +1027,50 @@ textarea:focus-visible {
   margin-top: 10px;
 }
 
+.interval-presets {
+  margin-top: 8px;
+}
+
+.interval-presets-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-60);
+  margin-bottom: 6px;
+}
+
+.interval-preset-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.preset-chip {
+  padding: 5px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background-color: var(--surface-subdued);
+  color: var(--ink-60);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.preset-chip:hover {
+  background-color: var(--surface-hover);
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.preset-chip.active {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+
 .login-note,
 .login-settings-status {
   margin-top: 8px;
@@ -1089,6 +1150,17 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background-color: var(--surface-subdued);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+
+.saved-account:has(.saved-account-body[hidden]) {
+  cursor: pointer;
+}
+
+.saved-account:has(.saved-account-body[hidden]):hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
 }
 
 .saved-account-heading {
@@ -1096,12 +1168,43 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: var(--r-sm);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.saved-account-heading:hover {
+  background-color: var(--surface-hover);
+}
+
+.saved-account:has(.saved-account-body[hidden]):hover .saved-account-heading {
+  background-color: transparent;
 }
 
 .saved-account-heading strong {
+  flex: 1;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ink);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.saved-account-heading:hover .account-disclosure-btn,
+.saved-account:has(.saved-account-body[hidden]):hover .account-disclosure-btn {
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.saved-account-heading:hover .disclosure-chevron,
+.saved-account:has(.saved-account-body[hidden]):hover .disclosure-chevron {
+  color: var(--ink);
+}
+
+.saved-account-heading:active .account-disclosure-btn {
+  transform: scale(0.96);
 }
 
 .saved-account-actions {
