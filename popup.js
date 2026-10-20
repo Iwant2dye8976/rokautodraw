@@ -363,7 +363,9 @@ function normalizeSearchText(str) {
     return String(str ?? "")
         .toLowerCase()
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/Đ/g, "D");
 }
 
 function matchesSearch(role, rawQuery) {

@@ -1,177 +1,260 @@
 /* ==========================================================================
    ROK Weekly Auto - Extension Popup Stylesheet
-   Design Language: Anthropic Design System (tasteskill anti-slop)
-   Palette: Near-black (#141413) & Warm Parchment (#faf9f5)
+   Design System: Anthropic Claude Editorial System (DESIGN-claude.md)
+   Palette: Warm Tinted Cream (#faf9f5), Warm Coral (#cc785c), Dark Navy (#181715)
+   Typography: Copernicus / Serif Display 400 + StyreneB / Inter Sans + JetBrains Mono
    ========================================================================== */
 
 :root {
-  /* Core Anthropic Colors */
-  --primary: #141413;
-  --primary-hover: #292825;
-  --primary-active: #050505;
+  /* ------------------------------------------------------------------------
+     Colors: Brand & Accent (DESIGN-claude.md)
+     ------------------------------------------------------------------------ */
+  --primary: #cc785c;
+  --primary-hover: #b8694f;
+  --primary-active: #a9583e;
+  --primary-disabled: #e6dfd8;
   --on-primary: #ffffff;
 
+  --accent-teal: #5db8a6;
+  --accent-amber: #e8a55a;
+
+  /* ------------------------------------------------------------------------
+     Colors: Surfaces & Canvas
+     ------------------------------------------------------------------------ */
+  --canvas: #faf9f5;
   --bg: #faf9f5;
-  --surface: #ffffff;
-  --surface-subdued: #f7f6f1;
-  --surface-hover: #f1efe8;
-  --surface-active: #e8e5dc;
+  --surface-soft: #f5f0e8;
+  --surface-card: #efe9de;
+  --surface-cream-strong: #e8e0d2;
+  --surface-hover: #ebe5d9;
+  --surface-active: #e2dbce;
 
-  --border: #dedbd2;
-  --border-subtle: #eeece5;
-  --border-strong: #b5b1a5;
+  /* Dark Navy Product Chrome Surfaces (Code editor mockups, console, footer) */
+  --surface-dark: #181715;
+  --surface-dark-elevated: #252320;
+  --surface-dark-soft: #1f1e1b;
+  --on-dark: #faf9f5;
+  --on-dark-soft: #a09d96;
 
-  /* Typography Colors */
+  /* Hairlines & Borders */
+  --hairline: #e6dfd8;
+  --hairline-soft: #ebe6df;
+  --border: #e6dfd8;
+  --border-subtle: #ebe6df;
+  --border-strong: #d4cec5;
+
+  /* Text & Inks */
   --ink: #141413;
-  --ink-60: #595751;
-  --ink-40: #87847b;
-  --ink-20: #b8b4aa;
+  --body: #3d3d3a;
+  --body-strong: #252523;
+  --muted: #6c6a64;
+  --muted-soft: #8e8b82;
 
-  /* Semantic Feedback Tokens */
-  --success: #25603a;
+  /* Semantics */
+  --success: #5db872;
   --success-bg: #edf6f0;
-  --success-border: #b7dec3;
+  --success-border: #c3e5cb;
 
-  --warning: #854d0e;
-  --warning-bg: #fefce8;
-  --warning-border: #fef08a;
+  --warning: #d4a017;
+  --warning-bg: #fdf9eb;
+  --warning-border: #f7e6a1;
 
-  --error: #991b1b;
-  --error-bg: #fef2f2;
-  --error-border: #fecaca;
+  --error: #c64545;
+  --error-bg: #fdf0f0;
+  --error-border: #f4c2c2;
 
-  /* Component Specific Tokens */
+  --gold: #e8a55a;
+  --gold-hover: #cc785c;
+
+  /* Product Chrome & Execution Log Tokens */
+  --log-bg: #181715;
+  --log-inner: #1f1e1b;
+  --log-ink: #faf9f5;
+  --log-border: #252320;
+
+  /* Switch Tokens */
   --switch-thumb: #ffffff;
   --switch-thumb-checked: #ffffff;
-  --log-bg: #141413;
-  --log-ink: #f7f6f1;
-  --log-border: #141413;
-  --gold: #d97706;
-  --gold-hover: #b45309;
 
-  /* Radii System (Shape Consistency Lock as specified in Anthropic design.md) */
+  /* Focus Ring */
+  --focus-ring: 0 0 0 3px rgba(204, 120, 92, 0.18);
+
+  /* ------------------------------------------------------------------------
+     Typography Stacks (Copernicus serif display + StyreneB / Inter sans + JetBrains Mono)
+     ------------------------------------------------------------------------ */
+  --font-display: "Copernicus", "Tiempos Headline", "Cormorant Garamond", "EB Garamond", "Cambria", "Constantia", "Palatino Linotype", "Times New Roman", serif;
+  --font-sans: "StyreneB", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* ------------------------------------------------------------------------
+     Shapes & Radii System (Hierarchical per DESIGN-claude.md)
+     ------------------------------------------------------------------------ */
   --r-xs: 4px;
-  --r-sm: 8px;
-  --r-md: 16px;
-  --r-lg: 24px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  /* Buttons, text inputs, category tabs */
+  --r-lg: 12px;
+  /* Cards, content cards, code window cards */
+  --r-xl: 16px;
+  /* Hero containers */
   --r-pill: 9999px;
+  /* Badges, pills */
+  --r-full: 9999px;
 
-  /* Typography Stacks */
-  --font-sans: "Anthropic Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "Anthropic Mono", "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
+  /* Spacing System */
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
 
-  /* Shadows (Whisper-soft as specified in Anthropic design.md) */
-  --shadow-card: 0 2px 2px rgba(0, 0, 0, 0.01), 0 4px 4px rgba(0, 0, 0, 0.02), 0 16px 24px rgba(0, 0, 0, 0.04);
-  --shadow-elevated: 0 2px 2px rgba(0, 0, 0, 0.01), 0 4px 4px rgba(0, 0, 0, 0.02), 0 16px 24px rgba(0, 0, 0, 0.04);
+  /* Depth & Elevation: Color-block first, shadows rare */
+  --shadow-subtle: 0 1px 3px rgba(20, 20, 19, 0.06);
+  --shadow-card: none;
+  --shadow-elevated: 0 1px 3px rgba(20, 20, 19, 0.08);
 
-  /* Motion Curves & Timing as specified in Anthropic design.md */
+  /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-fast: 100ms;
+  --duration-fast: 120ms;
   --duration-base: 200ms;
-  --duration-slow: 800ms;
 }
 
 /* --------------------------------------------------------------------------
-   Anthropic Dark Mode Palette (tasteskill anti-slop)
+   Anthropic Claude Dark Mode
    -------------------------------------------------------------------------- */
 [data-theme="dark"] {
-  --primary: #faf9f5;
-  --primary-hover: #ffffff;
-  --primary-active: #eae7dd;
-  --on-primary: #141413;
+  --primary: #cc785c;
+  --primary-hover: #d9886c;
+  --primary-active: #a9583e;
+  --primary-disabled: #2e2c28;
+  --on-primary: #ffffff;
 
-  --bg: #151413;
-  --surface: #1f1e1c;
-  --surface-subdued: #191816;
-  --surface-hover: #282724;
-  --surface-active: #31302c;
+  --accent-teal: #5db8a6;
+  --accent-amber: #e8a55a;
 
-  --border: #33312c;
-  --border-subtle: #262522;
-  --border-strong: #524f46;
+  --canvas: #181715;
+  --bg: #181715;
+  --surface-soft: #252320;
+  --surface-card: #1f1e1b;
+  --surface-cream-strong: #2c2925;
+  --surface-hover: #292723;
+  --surface-active: #33302b;
+
+  --surface-dark: #121110;
+  --surface-dark-elevated: #1f1e1b;
+  --surface-dark-soft: #181715;
+  --on-dark: #faf9f5;
+  --on-dark-soft: #a09d96;
+
+  --hairline: #2e2c28;
+  --hairline-soft: #252320;
+  --border: #2e2c28;
+  --border-subtle: #24221f;
+  --border-strong: #423f39;
 
   --ink: #faf9f5;
-  --ink-60: #b8b4aa;
-  --ink-40: #87847b;
-  --ink-20: #595751;
+  --body: #dedcd5;
+  --body-strong: #faf9f5;
+  --muted: #a09d96;
+  --muted-soft: #78756e;
 
-  --success: #4ade80;
-  --success-bg: #112317;
-  --success-border: #1c4527;
+  --success: #5db872;
+  --success-bg: #122417;
+  --success-border: #1e4528;
 
-  --warning: #fbbf24;
-  --warning-bg: #28200c;
-  --warning-border: #523e11;
+  --warning: #d4a017;
+  --warning-bg: #29210c;
+  --warning-border: #4a3b14;
 
-  --error: #f87171;
-  --error-bg: #2b1414;
-  --error-border: #5a2222;
+  --error: #d9534f;
+  --error-bg: #2b1313;
+  --error-border: #522020;
 
-  --switch-thumb: #faf9f5;
-  --switch-thumb-checked: #141413;
+  --gold: #e8a55a;
+  --gold-hover: #f3b977;
 
-  --log-bg: #0e0d0c;
-  --log-ink: #f0eee6;
+  --log-bg: #121110;
+  --log-inner: #181715;
+  --log-ink: #faf9f5;
   --log-border: #2e2c28;
 
-  --gold: #fbbf24;
-  --gold-hover: #f59e0b;
+  --switch-thumb: #faf9f5;
+  --switch-thumb-checked: #ffffff;
 
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
-  --shadow-elevated: 0 2px 6px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.5);
+  --focus-ring: 0 0 0 3px rgba(204, 120, 92, 0.25);
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --primary: #faf9f5;
-    --primary-hover: #ffffff;
-    --primary-active: #eae7dd;
-    --on-primary: #141413;
+    --primary: #cc785c;
+    --primary-hover: #d9886c;
+    --primary-active: #a9583e;
+    --primary-disabled: #2e2c28;
+    --on-primary: #ffffff;
 
-    --bg: #151413;
-    --surface: #1f1e1c;
-    --surface-subdued: #191816;
-    --surface-hover: #282724;
-    --surface-active: #31302c;
+    --accent-teal: #5db8a6;
+    --accent-amber: #e8a55a;
 
-    --border: #33312c;
-    --border-subtle: #262522;
-    --border-strong: #524f46;
+    --canvas: #181715;
+    --bg: #181715;
+    --surface-soft: #252320;
+    --surface-card: #1f1e1b;
+    --surface-cream-strong: #2c2925;
+    --surface-hover: #292723;
+    --surface-active: #33302b;
+
+    --surface-dark: #121110;
+    --surface-dark-elevated: #1f1e1b;
+    --surface-dark-soft: #181715;
+    --on-dark: #faf9f5;
+    --on-dark-soft: #a09d96;
+
+    --hairline: #2e2c28;
+    --hairline-soft: #252320;
+    --border: #2e2c28;
+    --border-subtle: #24221f;
+    --border-strong: #423f39;
 
     --ink: #faf9f5;
-    --ink-60: #b8b4aa;
-    --ink-40: #87847b;
-    --ink-20: #595751;
+    --body: #dedcd5;
+    --body-strong: #faf9f5;
+    --muted: #a09d96;
+    --muted-soft: #78756e;
 
-    --success: #4ade80;
-    --success-bg: #112317;
-    --success-border: #1c4527;
+    --success: #5db872;
+    --success-bg: #122417;
+    --success-border: #1e4528;
 
-    --warning: #fbbf24;
-    --warning-bg: #28200c;
-    --warning-border: #523e11;
+    --warning: #d4a017;
+    --warning-bg: #29210c;
+    --warning-border: #4a3b14;
 
-    --error: #f87171;
-    --error-bg: #2b1414;
-    --error-border: #5a2222;
+    --error: #d9534f;
+    --error-bg: #2b1313;
+    --error-border: #522020;
 
-    --switch-thumb: #faf9f5;
-    --switch-thumb-checked: #141413;
+    --gold: #e8a55a;
+    --gold-hover: #f3b977;
 
-    --log-bg: #0e0d0c;
-    --log-ink: #f0eee6;
+    --log-bg: #121110;
+    --log-inner: #181715;
+    --log-ink: #faf9f5;
     --log-border: #2e2c28;
 
-    --gold: #fbbf24;
-    --gold-hover: #f59e0b;
+    --switch-thumb: #faf9f5;
+    --switch-thumb-checked: #ffffff;
 
-    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
-    --shadow-elevated: 0 2px 6px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.5);
+    --focus-ring: 0 0 0 3px rgba(204, 120, 92, 0.25);
+    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-elevated: 0 2px 6px rgba(0, 0, 0, 0.4);
   }
 }
 
 /* --------------------------------------------------------------------------
-   Global Reset & Base
+   Global Reset & Base Atmosphere
    -------------------------------------------------------------------------- */
 *,
 *::before,
@@ -183,6 +266,7 @@
 
 html {
   min-height: 100%;
+  background-color: var(--canvas);
 }
 
 body {
@@ -192,18 +276,27 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  background-color: var(--bg);
-  color: var(--ink);
+  background-color: var(--canvas);
+  color: var(--body);
   font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 1.4;
-  letter-spacing: -0.24px;
+  font-size: 13px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   overflow-y: auto;
 }
 
-/* Custom Scrollbars */
+/* Editorial Typography Voice */
+h1,
+h2,
+h3,
+h4 {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+/* Subtle Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -214,15 +307,15 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-strong);
   border-radius: var(--r-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+  background: var(--muted);
 }
 
-/* Focus Visible Accessibility */
+/* Accessible Coral Focus Visible Ring */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -232,7 +325,7 @@ textarea:focus-visible {
 }
 
 /* --------------------------------------------------------------------------
-   Top Navigation Header
+   Top Navigation Header (top-nav)
    -------------------------------------------------------------------------- */
 .g-nav {
   position: sticky;
@@ -241,143 +334,68 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 48px;
-  padding: 8px 14px;
-  background-color: var(--bg);
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.02);
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 16px;
+  background-color: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
   transition: background-color var(--duration-base) var(--ease-out),
-              border-color var(--duration-base) var(--ease-out);
+    border-color var(--duration-base) var(--ease-out);
 }
 
 .brand-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
+/* Anthropic Radial-Spike Mark (4-spoke radial glyph) */
 .brand-mark {
-  font-size: 13px;
+  display: block;
+  flex-shrink: 0;
   color: var(--ink);
-  line-height: 1;
+  transition: color var(--duration-base) var(--ease-out);
 }
 
 .g-nav-brand {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
   color: var(--ink);
   white-space: nowrap;
 }
 
-/* --------------------------------------------------------------------------
-   Bottom Status Bar (Footer)
-   -------------------------------------------------------------------------- */
-.g-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 90;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 38px;
-  padding: 6px 14px;
-  background-color: var(--bg);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 -1px 3px rgba(20, 20, 19, 0.025);
-  margin-top: auto;
-  transition: background-color var(--duration-base) var(--ease-out),
-              border-color var(--duration-base) var(--ease-out);
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 210px;
-  padding: 3px 9px;
-  border-radius: var(--r-pill);
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--ink-60);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: background-color var(--duration-base) var(--ease-out),
-              border-color var(--duration-base) var(--ease-out);
-}
-
-.status-pill span#status {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--ink-20);
-  flex-shrink: 0;
-  transition: background-color var(--duration-base) var(--ease-out),
-              box-shadow var(--duration-base) var(--ease-out);
-}
-
-.status-dot.on {
-  background-color: var(--success);
-  box-shadow: 0 0 0 2px var(--success-border);
-}
-
-.status-dot.off {
-  background-color: var(--error);
-  box-shadow: 0 0 0 2px var(--error-border);
-}
-
-.utc-clock {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--ink-60);
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* Theme Toggle Button in Header */
+/* Theme Toggle Button */
 .theme-toggle-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background-color: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background-color: var(--canvas);
   color: var(--ink);
   cursor: pointer;
   flex-shrink: 0;
   transition: background-color var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out),
-              color var(--duration-fast) var(--ease-out),
-              transform var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .theme-toggle-btn:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   border-color: var(--border-strong);
-  color: var(--ink);
 }
 
 .theme-toggle-btn:active {
-  transform: scale(0.94);
-  background-color: var(--surface-active);
+  transform: scale(0.96);
+  background-color: var(--surface-card);
 }
 
 .theme-toggle-btn .theme-icon {
@@ -405,6 +423,7 @@ textarea:focus-visible {
   :root:not([data-theme="light"]) .theme-icon-sun {
     display: block !important;
   }
+
   :root:not([data-theme="light"]) .theme-icon-moon {
     display: none !important;
   }
@@ -422,15 +441,17 @@ textarea:focus-visible {
 }
 
 /* --------------------------------------------------------------------------
-   Cards Architecture
+   Cards Architecture (feature-card per DESIGN-claude.md)
+   Tinted cream surface card (#efe9de), 12px border radius, 1px hairline border
    -------------------------------------------------------------------------- */
 .card {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
+  background-color: var(--surface-card);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-card);
   overflow: hidden;
-  transition: border-color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out);
 }
 
 .card-head {
@@ -449,24 +470,26 @@ textarea:focus-visible {
   margin-bottom: 8px;
 }
 
+/* Eyebrows: StyreneB 12px/500 with letter-spacing (caption-uppercase) */
 .eyebrow {
+  font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: 500;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--ink);
+  color: var(--muted);
 }
 
 /* --------------------------------------------------------------------------
-   Segmented Store Control
+   Segmented Store Control (category-tab per DESIGN-claude.md)
    -------------------------------------------------------------------------- */
 .segmented-control {
   display: inline-flex;
   align-items: center;
   padding: 2px;
-  background-color: var(--surface-subdued);
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
+  background-color: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
 }
 
 .theme-segmented {
@@ -504,10 +527,10 @@ textarea:focus-visible {
 .segmented-item span {
   display: inline-block;
   padding: 4px 11px;
-  border-radius: var(--r-pill);
-  font-size: 11px;
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
   font-weight: 500;
-  color: var(--ink-60);
+  color: var(--muted);
   background: transparent;
   transition: all var(--duration-fast) var(--ease-out);
   user-select: none;
@@ -518,13 +541,13 @@ textarea:focus-visible {
   color: var(--ink);
 }
 
-.segmented-item input[type="radio"]:checked + span {
-  background-color: var(--primary);
-  color: var(--on-primary);
-  box-shadow: 0 1px 3px rgba(20, 20, 19, 0.15);
+.segmented-item input[type="radio"]:checked+span {
+  background-color: var(--canvas);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06);
 }
 
-.segmented-item input[type="radio"]:focus-visible + span {
+.segmented-item input[type="radio"]:focus-visible+span {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
@@ -543,9 +566,9 @@ textarea:focus-visible {
 }
 
 .input-label {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
-  color: var(--ink-60);
+  color: var(--muted);
 }
 
 .select-wrapper {
@@ -559,34 +582,41 @@ textarea:focus-visible {
   width: 100%;
   appearance: none;
   -webkit-appearance: none;
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 7px 28px 7px 10px;
-  font-family: inherit;
+  background-color: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: 8px 30px 8px 11px;
+  font-family: var(--font-sans);
   font-size: 12px;
   color: var(--ink);
   cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .select-wrapper select:hover {
   border-color: var(--border-strong);
 }
 
+.select-wrapper select:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .select-wrapper select option {
-  background-color: var(--surface);
+  background-color: var(--canvas);
   color: var(--ink);
 }
 
 .select-arrow {
   position: absolute;
-  right: 10px;
+  right: 11px;
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ink-60);
+  color: var(--muted);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
@@ -605,41 +635,44 @@ textarea:focus-visible {
 }
 
 .hero-action-row {
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
+/* Secondary Button (button-secondary per DESIGN-claude.md) */
 .btn-util {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   min-height: 36px;
+  height: 36px;
   padding: 6px 12px;
-  background-color: var(--surface);
+  background-color: var(--canvas);
   color: var(--ink);
-  font-family: inherit;
-  font-size: 11.5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: -0.01em;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  letter-spacing: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
   cursor: pointer;
   white-space: nowrap;
   flex: 1 1 0;
-  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.025);
+  box-shadow: none;
   transition: background-color var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out),
-              transform var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .btn-util:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   border-color: var(--border-strong);
 }
 
 .btn-util:active {
   transform: scale(0.98);
-  background-color: var(--surface-active);
+  background-color: var(--surface-card);
 }
 
 .btn-icon {
@@ -647,29 +680,30 @@ textarea:focus-visible {
   line-height: 1;
 }
 
-/* Primary Hero CTA */
+/* Primary Coral CTA Button (button-primary per DESIGN-claude.md) */
 .btn-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   width: 100%;
-  min-height: 38px;
-  padding: 8px 18px;
+  min-height: 40px;
+  height: 40px;
+  padding: 10px 20px;
   background-color: var(--primary);
   color: var(--on-primary);
-  font-family: inherit;
-  font-size: 12.5px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
   font-weight: 500;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   border: none;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-md);
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 2px 4px rgba(20, 20, 19, 0.12);
+  box-shadow: none;
   transition: background-color var(--duration-fast) var(--ease-out),
-              transform var(--duration-fast) var(--ease-out),
-              opacity var(--duration-fast) var(--ease-out);
+    transform var(--duration-fast) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
 }
 
 .btn-pill:hover {
@@ -682,34 +716,34 @@ textarea:focus-visible {
 }
 
 .btn-pill:disabled {
-  background-color: var(--border-strong);
-  color: var(--ink-40);
+  background-color: var(--primary-disabled);
+  color: var(--muted);
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 /* Special Button Variants */
 .btn-primary-outline {
-  border-color: var(--primary);
+  border: 1px solid var(--primary);
   color: var(--primary);
-  font-weight: 600;
+  background-color: var(--canvas);
+  font-weight: 500;
 }
 
-.btn-destructive-subtle {
-  color: var(--error);
+.btn-primary-outline:hover {
+  background-color: rgba(204, 120, 92, 0.08);
+  border-color: var(--primary-hover);
 }
 
-.btn-destructive-subtle:hover {
-  background-color: var(--error-bg);
-  border-color: var(--error-border);
-}
-
+.btn-destructive-subtle,
 #clearLoginBtn {
   color: var(--error);
+  background-color: var(--canvas);
 }
 
+.btn-destructive-subtle:hover,
 #clearLoginBtn:hover {
   background-color: var(--error-bg);
   border-color: var(--error-border);
@@ -723,14 +757,15 @@ textarea:focus-visible {
 }
 
 .draws-remaining {
+  font-family: var(--font-sans);
   font-size: 11px;
   font-weight: 500;
-  color: var(--ink-60);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
-  background-color: var(--surface-subdued);
-  padding: 2px 8px;
+  background-color: var(--surface-soft);
+  padding: 3px 9px;
   border-radius: var(--r-pill);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--hairline);
 }
 
 /* Character Search Bar */
@@ -748,45 +783,44 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ink-40);
+  color: var(--muted-soft);
   pointer-events: none;
   line-height: 1;
 }
 
 .char-search-input {
   width: 100%;
-  height: 32px;
-  padding: 0 28px 0 30px;
-  background-color: var(--surface-subdued);
-  border: 1px solid var(--border);
+  height: 34px;
+  padding: 0 28px 0 32px;
+  background-color: var(--canvas);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-pill);
-  font-family: inherit;
-  font-size: 11.5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   color: var(--ink);
-  letter-spacing: -0.01em;
   transition: background-color var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .char-search-input::placeholder {
-  color: var(--ink-40);
+  color: var(--muted-soft);
 }
 
 .char-search-input:hover {
-  background-color: var(--surface);
   border-color: var(--border-strong);
 }
 
 .char-search-input:focus {
-  background-color: var(--surface);
+  background-color: var(--canvas);
   border-color: var(--primary);
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .char-search-clear {
   position: absolute;
-  right: 6px;
+  right: 8px;
   display: grid;
   place-items: center;
   width: 20px;
@@ -794,16 +828,16 @@ textarea:focus-visible {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--ink-40);
+  color: var(--muted);
   font-size: 14px;
   line-height: 1;
-  border-radius: 50%;
+  border-radius: var(--r-full);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
 .char-search-clear:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   color: var(--ink);
 }
 
@@ -817,11 +851,11 @@ textarea:focus-visible {
 }
 
 .char-list-inner {
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   overflow-y: auto;
   max-height: 280px;
-  background-color: var(--surface);
+  background-color: var(--canvas);
 }
 
 .char-row {
@@ -829,8 +863,8 @@ textarea:focus-visible {
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  background-color: var(--surface);
+  border-bottom: 1px solid var(--hairline-soft);
+  background-color: var(--canvas);
   transition: background-color var(--duration-fast) var(--ease-out);
 }
 
@@ -844,7 +878,7 @@ textarea:focus-visible {
 }
 
 .char-row:hover {
-  background-color: var(--surface-subdued);
+  background-color: var(--surface-soft);
 }
 
 .char-row:not(.char-initial-state):hover .char-history {
@@ -853,23 +887,22 @@ textarea:focus-visible {
 }
 
 .char-row:not(.char-initial-state):active {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-card);
 }
 
 .char-initial-state {
   justify-content: center;
-  padding: 18px 12px;
+  padding: 20px 12px;
 }
 
 .char-avatar {
   width: 34px;
   height: 34px;
-  border-radius: 50%;
+  border-radius: var(--r-full);
   overflow: hidden;
   flex-shrink: 0;
-  border: 1.5px solid var(--border);
-  box-shadow: 0 1px 3px rgba(20, 20, 19, 0.05);
-  background-color: var(--surface);
+  border: 1px solid var(--hairline);
+  background-color: var(--surface-soft);
 }
 
 .char-avatar img {
@@ -885,14 +918,14 @@ textarea:focus-visible {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 50%;
-  background-color: var(--surface-active);
+  border-radius: var(--r-full);
+  background-color: var(--surface-cream-strong);
   color: var(--ink);
+  font-family: var(--font-sans);
   font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 500;
   flex-shrink: 0;
-  border: 1.5px solid var(--border);
+  border: 1px solid var(--hairline);
 }
 
 .char-name {
@@ -900,12 +933,13 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+/* Character History Link (text-link per DESIGN-claude.md) */
 .char-history {
   display: block;
+  font-family: var(--font-sans);
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
-  letter-spacing: -0.015em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -929,18 +963,18 @@ textarea:focus-visible {
   height: 28px;
   border: 0;
   background: transparent;
-  color: var(--ink-40);
-  font-size: 17px;
+  color: var(--muted-soft);
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   border-radius: var(--r-sm);
   transition: color var(--duration-fast) var(--ease-out),
-              background-color var(--duration-fast) var(--ease-out);
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .char-favorite-btn:hover {
   color: var(--primary);
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
 }
 
 .char-favorite-btn svg {
@@ -964,15 +998,16 @@ textarea:focus-visible {
   min-width: 26px;
   height: 26px;
   padding: 0 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
-  background-color: var(--surface);
-  color: var(--ink-60);
+  background-color: var(--canvas);
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .char-copy-btn svg {
@@ -981,33 +1016,35 @@ textarea:focus-visible {
 }
 
 .char-copy-btn:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   border-color: var(--border-strong);
   color: var(--ink);
 }
 
 /* Server pill in character row */
-.char-row > span:last-child {
+.char-row>span:last-child {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
-  color: var(--ink-40);
-  background-color: var(--surface-subdued);
+  color: var(--muted);
+  background-color: var(--surface-soft);
   padding: 2px 6px;
   border-radius: var(--r-xs);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--hairline);
   flex-shrink: 0;
 }
 
-/* Status Badges */
+/* --------------------------------------------------------------------------
+   Badges (badge-pill per DESIGN-claude.md)
+   -------------------------------------------------------------------------- */
 .badge {
   display: inline-flex;
   align-items: center;
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   font-weight: 500;
   padding: 3px 10px;
   border-radius: var(--r-pill);
-  letter-spacing: -0.01em;
 }
 
 .badge-warn {
@@ -1023,12 +1060,12 @@ textarea:focus-visible {
 }
 
 .draw-badge.draw-loading {
-  background-color: var(--surface-subdued);
-  color: var(--ink-60);
-  border: 1px solid var(--border);
+  background-color: var(--surface-cream-strong);
+  color: var(--muted);
+  border: 1px solid var(--hairline);
   padding: 4px 12px;
   border-radius: var(--r-pill);
-  font-size: 11px;
+  font-size: 11.5px;
 }
 
 /* --------------------------------------------------------------------------
@@ -1045,7 +1082,7 @@ textarea:focus-visible {
 }
 
 .additional-settings-head:hover .settings-disclosure {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   border-color: var(--border-strong);
 }
 
@@ -1066,16 +1103,16 @@ textarea:focus-visible {
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background-color: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-full);
+  background-color: var(--canvas);
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .settings-disclosure:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   border-color: var(--border-strong);
 }
 
@@ -1083,10 +1120,10 @@ textarea:focus-visible {
   display: block;
   width: 12px;
   height: 12px;
-  color: var(--ink-60);
+  color: var(--muted);
   pointer-events: none;
   transition: transform var(--duration-base) var(--ease-out),
-              color var(--duration-fast) var(--ease-out);
+    color var(--duration-fast) var(--ease-out);
 }
 
 .settings-disclosure:hover .disclosure-chevron,
@@ -1118,9 +1155,9 @@ textarea:focus-visible {
 /* Individual Settings Sections */
 .settings-section {
   padding: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-md);
-  background-color: var(--surface);
+  background-color: var(--canvas);
 }
 
 .settings-section-head {
@@ -1130,26 +1167,28 @@ textarea:focus-visible {
   gap: 8px;
 }
 
+/* Section titles inside cards (typography.title-sm per DESIGN-claude.md) */
 .settings-section-title {
   margin: 0;
-  font-size: 12px;
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--ink);
 }
 
 .settings-toggle-label {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
-  color: var(--ink-60);
-  min-width: 20px;
+  color: var(--muted);
+  min-width: 24px;
   text-align: right;
   transition: color var(--duration-fast) var(--ease-out);
 }
 
 .switch-toggle:has(input[type="checkbox"]:checked) .settings-toggle-label {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Switch Toggle Styling */
@@ -1180,15 +1219,15 @@ textarea:focus-visible {
   display: inline-block;
   width: 36px;
   height: 20px;
-  background-color: var(--border);
+  background-color: var(--border-strong);
   border-radius: var(--r-pill);
   flex-shrink: 0;
   transition: background-color var(--duration-base) var(--ease-out),
-              box-shadow var(--duration-base) var(--ease-out);
+    box-shadow var(--duration-base) var(--ease-out);
 }
 
 .switch-toggle:hover .switch-track {
-  background-color: var(--border-strong);
+  background-color: var(--muted-soft);
 }
 
 .switch-track::after {
@@ -1198,37 +1237,37 @@ textarea:focus-visible {
   left: 2px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--r-full);
   background-color: var(--switch-thumb);
-  box-shadow: 0 1px 3px rgba(20, 20, 19, 0.22), 0 0 1px rgba(20, 20, 19, 0.15);
+  box-shadow: 0 1px 3px rgba(20, 20, 19, 0.2);
   transition: left var(--duration-base) var(--ease-out),
-              width var(--duration-fast) var(--ease-out),
-              background-color var(--duration-base) var(--ease-out);
+    width var(--duration-fast) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out);
 }
 
 .switch-toggle:active .switch-track::after {
   width: 18px;
 }
 
-.switch-toggle input[type="checkbox"]:checked + .switch-track {
+.switch-toggle input[type="checkbox"]:checked+.switch-track {
   background-color: var(--primary);
 }
 
-.switch-toggle:hover input[type="checkbox"]:checked + .switch-track {
+.switch-toggle:hover input[type="checkbox"]:checked+.switch-track {
   background-color: var(--primary-hover);
 }
 
-.switch-toggle input[type="checkbox"]:checked + .switch-track::after {
+.switch-toggle input[type="checkbox"]:checked+.switch-track::after {
   left: 18px;
   background-color: var(--switch-thumb-checked);
 }
 
-.switch-toggle:active input[type="checkbox"]:checked + .switch-track::after {
+.switch-toggle:active input[type="checkbox"]:checked+.switch-track::after {
   left: 16px;
   width: 18px;
 }
 
-.switch-toggle input[type="checkbox"]:focus-visible + .switch-track {
+.switch-toggle input[type="checkbox"]:focus-visible+.switch-track {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
@@ -1238,31 +1277,33 @@ textarea:focus-visible {
   display: grid;
   gap: 4px;
   margin-top: 8px;
-  font-size: 11px;
-  color: var(--ink-60);
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
 .login-field input {
   width: 100%;
   min-width: 0;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background-color: var(--surface);
+  padding: 8px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background-color: var(--canvas);
   color: var(--ink);
-  font-family: inherit;
+  font-family: var(--font-sans);
   font-size: 12px;
-  transition: border-color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .login-field input:hover {
   border-color: var(--border-strong);
 }
 
+.login-field input:focus,
 .login-field input:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 .auto-check-interval {
@@ -1277,7 +1318,7 @@ textarea:focus-visible {
   display: block;
   font-size: 11px;
   font-weight: 500;
-  color: var(--ink-60);
+  color: var(--muted);
   margin-bottom: 6px;
 }
 
@@ -1288,13 +1329,13 @@ textarea:focus-visible {
 }
 
 .preset-chip {
-  padding: 5px 4px;
-  border: 1px solid var(--border);
+  padding: 6px 4px;
+  border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
-  background-color: var(--surface-subdued);
-  color: var(--ink-60);
-  font-family: inherit;
-  font-size: 11px;
+  background-color: var(--canvas);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   font-weight: 500;
   text-align: center;
   cursor: pointer;
@@ -1302,23 +1343,24 @@ textarea:focus-visible {
 }
 
 .preset-chip:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   color: var(--ink);
   border-color: var(--border-strong);
 }
 
 .preset-chip.active {
-  background-color: var(--primary);
-  color: var(--on-primary);
-  border-color: var(--primary);
+  background-color: var(--surface-cream-strong);
+  color: var(--ink);
+  border-color: var(--border-strong);
+  font-weight: 600;
 }
 
 .login-note,
 .login-settings-status {
   margin-top: 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--ink-60);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .login-settings-status:empty {
@@ -1329,7 +1371,7 @@ textarea:focus-visible {
   padding: 8px 10px;
   background-color: var(--warning-bg);
   border: 1px solid var(--warning-border);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   color: var(--warning);
 }
 
@@ -1348,27 +1390,28 @@ textarea:focus-visible {
 
 .login-tab {
   flex: 1 1 0;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  background-color: var(--surface-subdued);
-  color: var(--ink-60);
-  font-family: inherit;
-  font-size: 11px;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background-color: var(--surface-soft);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
 .login-tab:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-cream-strong);
   color: var(--ink);
 }
 
 .login-tab.active {
-  background-color: var(--primary);
-  color: var(--on-primary);
-  border-color: var(--primary);
+  background-color: var(--canvas);
+  color: var(--ink);
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06);
 }
 
 .login-panel {
@@ -1389,11 +1432,11 @@ textarea:focus-visible {
   display: grid;
   gap: 8px;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-md);
-  background-color: var(--surface-subdued);
+  background-color: var(--surface-soft);
   transition: border-color var(--duration-fast) var(--ease-out),
-              background-color var(--duration-fast) var(--ease-out);
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .saved-account:has(.saved-account-body[hidden]) {
@@ -1401,7 +1444,7 @@ textarea:focus-visible {
 }
 
 .saved-account:has(.saved-account-body[hidden]):hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-cream-strong);
   border-color: var(--border-strong);
 }
 
@@ -1419,7 +1462,7 @@ textarea:focus-visible {
 }
 
 .saved-account-heading:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-cream-strong);
 }
 
 .saved-account:has(.saved-account-body[hidden]):hover .saved-account-heading {
@@ -1429,14 +1472,14 @@ textarea:focus-visible {
 .saved-account-heading strong {
   flex: 1;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   transition: color var(--duration-fast) var(--ease-out);
 }
 
 .saved-account-heading:hover .account-disclosure-btn,
 .saved-account:has(.saved-account-body[hidden]):hover .account-disclosure-btn {
-  background-color: var(--surface);
+  background-color: var(--canvas);
   border-color: var(--border-strong);
 }
 
@@ -1483,7 +1526,6 @@ textarea:focus-visible {
   padding-right: 36px;
 }
 
-/* Hide native Edge/Chrome password reveal icon to avoid clash */
 .password-input-group input[type="password"]::-ms-reveal,
 .password-input-group input[type="password"]::-ms-clear,
 .password-input-group input[type="password"]::-webkit-contacts-auto-fill-button {
@@ -1500,16 +1542,16 @@ textarea:focus-visible {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--ink-40);
+  color: var(--muted);
   border-radius: var(--r-xs);
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-out),
-              background-color var(--duration-fast) var(--ease-out);
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .btn-toggle-password:hover {
   color: var(--ink);
-  background-color: var(--surface-hover);
+  background-color: var(--surface-cream-strong);
 }
 
 .btn-toggle-password:focus-visible {
@@ -1552,8 +1594,9 @@ textarea:focus-visible {
 .add-account-btn {
   justify-self: start;
   min-height: 32px;
-  padding: 4px 10px;
-  font-size: 11px;
+  height: 32px;
+  padding: 4px 11px;
+  font-size: 11.5px;
 }
 
 .login-actions {
@@ -1574,8 +1617,9 @@ textarea:focus-visible {
 .config-selection-actions .btn-util {
   flex: 0 0 auto;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 5px 11px;
   min-height: 30px;
+  height: 30px;
   font-size: 11px;
 }
 
@@ -1595,7 +1639,7 @@ textarea:focus-visible {
 }
 
 #toggleAllConfigBtn.is-selected {
-  background-color: var(--surface-active);
+  background-color: var(--surface-cream-strong);
   border-color: var(--primary);
 }
 
@@ -1611,7 +1655,7 @@ textarea:focus-visible {
 
 .config-selection-count {
   font-size: 11px;
-  color: var(--ink-40);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1620,7 +1664,7 @@ textarea:focus-visible {
   gap: 8px;
   margin-top: 10px;
   font-size: 11.5px;
-  color: var(--ink-60);
+  color: var(--body);
 }
 
 .config-options label {
@@ -1632,8 +1676,8 @@ textarea:focus-visible {
 
 .config-options input[type="checkbox"] {
   accent-color: var(--primary);
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   cursor: pointer;
 }
 
@@ -1647,28 +1691,31 @@ textarea:focus-visible {
 #tokenBox {
   display: block;
   width: 100%;
-  min-height: 56px;
+  min-height: 58px;
   margin-top: 8px;
   padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background-color: var(--surface-subdued);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background-color: var(--surface-soft);
   color: var(--ink);
   font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
   resize: vertical;
   word-break: break-all;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 #tokenBox:focus {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 /* --------------------------------------------------------------------------
-   Execution Log Console
+   Execution Log Console (code-window-card / product chrome per DESIGN-claude.md)
+   Dark surface card (#181715) with JetBrains Mono monospace type
    -------------------------------------------------------------------------- */
 .log-section {
   display: flex;
@@ -1682,21 +1729,29 @@ textarea:focus-visible {
 
 #log {
   display: none;
-  max-height: 120px;
-  padding: 10px 12px;
+  max-height: 130px;
+  padding: 12px 14px;
   background-color: var(--log-bg);
   color: var(--log-ink);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.6;
   border: 1px solid var(--log-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   overflow-y: auto;
   white-space: pre-wrap;
 }
 
 #log.visible {
   display: block;
+}
+
+#log::-webkit-scrollbar-thumb {
+  background: var(--surface-dark-elevated);
+}
+
+#log::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }
 
 /* --------------------------------------------------------------------------
@@ -1711,6 +1766,7 @@ textarea:focus-visible {
     opacity: 0;
     transform: translateX(16px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -1723,11 +1779,10 @@ textarea:focus-visible {
   z-index: 100;
   display: flex;
   align-items: center;
-  min-height: 48px;
-  padding: 0 10px;
-  background-color: var(--bg);
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.02);
+  min-height: 52px;
+  padding: 0 14px;
+  background-color: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .back-btn {
@@ -1735,13 +1790,13 @@ textarea:focus-visible {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: transparent;
+  background: var(--canvas);
   color: var(--ink);
-  font-family: inherit;
+  font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
 }
@@ -1752,22 +1807,25 @@ textarea:focus-visible {
 }
 
 .back-btn:hover {
-  background-color: var(--surface-hover);
+  background-color: var(--surface-soft);
   border-color: var(--border-strong);
 }
 
 .back-btn:active {
   transform: scale(0.96);
+  background-color: var(--surface-card);
 }
 
 .detail-nav-title {
   flex: 1 1 auto;
   text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.3px;
   color: var(--ink);
-  padding-right: 70px; /* Balance back button */
+  padding-right: 70px;
+  /* Balance back button */
 }
 
 #detailView .content {
@@ -1778,10 +1836,9 @@ textarea:focus-visible {
 }
 
 .char-hero-card {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
+  background-color: var(--surface-card);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 
@@ -1795,11 +1852,11 @@ textarea:focus-visible {
 .hero-avatar-wrap {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: var(--r-full);
   overflow: hidden;
-  border: 2px solid var(--border);
+  border: 1px solid var(--hairline);
   flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(20, 20, 19, 0.08);
+  background-color: var(--surface-soft);
 }
 
 .hero-avatar {
@@ -1810,36 +1867,37 @@ textarea:focus-visible {
 }
 
 .hero-name {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: -0.4px;
   color: var(--ink);
 }
 
 .hero-svr {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-40);
+  color: var(--muted);
   margin-top: 2px;
 }
 
 .history-card {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
+  background-color: var(--surface-card);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 
 .history-card-head {
   padding: 11px 14px 9px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--ink);
-  border-bottom: 1px solid var(--border-subtle);
-  background-color: var(--surface-subdued);
+  color: var(--muted);
+  border-bottom: 1px solid var(--hairline);
+  background-color: var(--surface-soft);
 }
 
 .history-list {
@@ -1852,8 +1910,8 @@ textarea:focus-visible {
   align-items: center;
   gap: 10px;
   padding: 9px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  background-color: var(--surface);
+  border-bottom: 1px solid var(--hairline-soft);
+  background-color: var(--canvas);
   transition: background-color var(--duration-fast) var(--ease-out);
 }
 
@@ -1862,13 +1920,13 @@ textarea:focus-visible {
 }
 
 .history-row:hover {
-  background-color: var(--surface-subdued);
+  background-color: var(--surface-soft);
 }
 
 .h-idx {
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-40);
+  font-size: 10.5px;
+  color: var(--muted-soft);
   width: 18px;
   text-align: right;
   flex-shrink: 0;
@@ -1880,17 +1938,17 @@ textarea:focus-visible {
   object-fit: contain;
   flex-shrink: 0;
   border-radius: var(--r-sm);
-  background-color: var(--surface-subdued);
+  background-color: var(--surface-soft);
   padding: 2px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--hairline);
 }
 
 .h-reward {
   flex: 1 1 auto;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -1900,7 +1958,7 @@ textarea:focus-visible {
 .h-time {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--ink-40);
+  color: var(--muted-soft);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1909,8 +1967,8 @@ textarea:focus-visible {
   padding: 28px 16px;
   text-align: center;
   font-size: 12px;
-  color: var(--ink-40);
-  background-color: var(--surface);
+  color: var(--muted);
+  background-color: var(--canvas);
 }
 
 .history-loading {
@@ -1922,9 +1980,83 @@ textarea:focus-visible {
 }
 
 /* --------------------------------------------------------------------------
+   Bottom Status Bar (Footer per DESIGN-claude.md)
+   "Dark navy footer that closes every page. Background {colors.surface-dark}
+   (#181715), text {colors.on-dark-soft}. The footer never inverts."
+   -------------------------------------------------------------------------- */
+.g-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 14px;
+  background-color: var(--surface-dark);
+  border-top: 1px solid var(--surface-dark-elevated);
+  margin-top: auto;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 210px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background-color: var(--surface-dark-elevated);
+  border: 1px solid var(--surface-dark-soft);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--on-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-pill span#status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background-color: var(--on-dark-soft);
+  flex-shrink: 0;
+  transition: background-color var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out);
+}
+
+.status-dot.on {
+  background-color: var(--success);
+  box-shadow: 0 0 0 2px rgba(93, 184, 114, 0.3);
+}
+
+.status-dot.off {
+  background-color: var(--error);
+  box-shadow: 0 0 0 2px rgba(198, 69, 69, 0.3);
+}
+
+.utc-clock {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--on-dark-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
    Reduced Motion Guardrail
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
