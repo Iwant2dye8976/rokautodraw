@@ -71,7 +71,8 @@
           </button>
         </div>
         <div class="btn-row hero-action-row">
-          <button class="btn-pill" id="drawNowBtn" type="button">Quay thưởng ngay</button>
+          <button class="btn-pill" id="drawNowBtn" type="button">Quay tài khoản này</button>
+          <button class="btn-pill-outline" id="drawAllBtn" type="button">Quay tất cả tài khoản</button>
         </div>
       </div>
     </section>
@@ -135,31 +136,70 @@
               <span class="switch-track" aria-hidden="true"></span>
             </label>
           </div>
-          <label class="login-field auto-check-interval">
-            <span>Thời gian giữa mỗi lần kiểm tra (phút)</span>
-            <input id="autoCheckIntervalMinutes" type="number" min="1" step="1" inputmode="numeric" />
-          </label>
-          <div class="interval-presets" role="group" aria-label="Thời gian kiểm tra có sẵn">
-            <div class="interval-preset-chips">
-              <button type="button" class="preset-chip" data-minutes="60"
-                title="1 giờ (60 phút - 24 lần/ngày)">1h</button>
-              <button type="button" class="preset-chip" data-minutes="120"
-                title="2 giờ (120 phút - 12 lần/ngày)">2h</button>
-              <button type="button" class="preset-chip" data-minutes="180"
-                title="3 giờ (180 phút - 8 lần/ngày)">3h</button>
-              <button type="button" class="preset-chip" data-minutes="240"
-                title="4 giờ (240 phút - 6 lần/ngày)">4h</button>
-              <button type="button" class="preset-chip" data-minutes="360"
-                title="6 giờ (360 phút - 4 lần/ngày)">6h</button>
-              <button type="button" class="preset-chip" data-minutes="480"
-                title="8 giờ (480 phút - 3 lần/ngày)">8h</button>
-              <button type="button" class="preset-chip" data-minutes="720"
-                title="12 giờ (720 phút - 2 lần/ngày)">12h</button>
-              <button type="button" class="preset-chip" data-minutes="1440"
-                title="24 giờ (1440 phút - 1 lần/ngày)">24h</button>
+          <div class="settings-section-content" id="autoCheckSettings">
+            <div class="segmented-control auto-check-segmented" role="radiogroup" aria-label="Chọn chế độ kiểm tra" style="margin-top: 6px;">
+              <label class="segmented-item">
+                <input type="radio" name="autoCheckMode" value="utcReset" checked />
+                <span>Theo giờ reset UTC</span>
+              </label>
+              <label class="segmented-item">
+                <input type="radio" name="autoCheckMode" value="interval" />
+                <span>Định kỳ tùy chỉnh</span>
+              </label>
             </div>
+
+            <!-- Panel 1: UTC Reset Check -->
+            <div id="utcResetPanel" class="auto-check-panel" style="margin-top: 8px;">
+              <label class="login-field" for="utcResetDaySelect" style="margin-top: 0;">
+                <span class="input-label">Mục tiêu ngày reset</span>
+                <div class="select-wrapper">
+                  <select id="utcResetDaySelect">
+                    <option value="5" selected>Thứ Sáu (Reset sự kiện RoK)</option>
+                    <option value="everyday">Mỗi ngày (Daily 00:05 UTC)</option>
+                    <option value="1">Thứ Hai hàng tuần</option>
+                    <option value="0">Chủ Nhật hàng tuần</option>
+                  </select>
+                  <svg class="select-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 6l4 4 4-4" />
+                  </svg>
+                </div>
+              </label>
+              <p class="login-note" style="margin-top: 4px; font-size: 11px;">
+                Chạy lúc 00:05 UTC. Tự động bù lượt quay nếu mở trình duyệt muộn sau 00:05 UTC ngày reset.
+              </p>
+            </div>
+
+            <!-- Panel 2: Custom Interval Check -->
+            <div id="intervalPanel" class="auto-check-panel" style="margin-top: 8px;" hidden>
+              <label class="login-field auto-check-interval" style="margin-top: 0;">
+                <span>Thời gian giữa mỗi lần kiểm tra (phút)</span>
+                <input id="autoCheckIntervalMinutes" type="number" min="1" step="1" inputmode="numeric" />
+              </label>
+              <div class="interval-presets" role="group" aria-label="Thời gian kiểm tra có sẵn">
+                <div class="interval-preset-chips">
+                  <button type="button" class="preset-chip" data-minutes="60"
+                    title="1 giờ (60 phút - 24 lần/ngày)">1h</button>
+                  <button type="button" class="preset-chip" data-minutes="120"
+                    title="2 giờ (120 phút - 12 lần/ngày)">2h</button>
+                  <button type="button" class="preset-chip" data-minutes="180"
+                    title="3 giờ (180 phút - 8 lần/ngày)">3h</button>
+                  <button type="button" class="preset-chip" data-minutes="240"
+                    title="4 giờ (240 phút - 6 lần/ngày)">4h</button>
+                  <button type="button" class="preset-chip" data-minutes="360"
+                    title="6 giờ (360 phút - 4 lần/ngày)">6h</button>
+                  <button type="button" class="preset-chip" data-minutes="480"
+                    title="8 giờ (480 phút - 3 lần/ngày)">8h</button>
+                  <button type="button" class="preset-chip" data-minutes="720"
+                    title="12 giờ (720 phút - 2 lần/ngày)">12h</button>
+                  <button type="button" class="preset-chip" data-minutes="1440"
+                    title="24 giờ (1440 phút - 1 lần/ngày)">24h</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="login-settings-status" id="autoCheckSettingsStatus" role="status" aria-live="polite"></div>
           </div>
-          <div class="login-settings-status" id="autoCheckSettingsStatus" role="status" aria-live="polite"></div>
         </section>
 
         <!-- Auto Relogin Section -->
@@ -240,6 +280,44 @@
           </div>
         </section>
 
+        <!-- Webhook Notification Section -->
+        <section class="settings-section" aria-labelledby="webhookTitle">
+          <div class="settings-section-head">
+            <h3 class="settings-section-title" id="webhookTitle">Thông báo Webhook</h3>
+            <label class="switch-toggle" for="webhookEnabled">
+              <span class="settings-toggle-label" id="webhookToggleLabel">Tắt</span>
+              <input id="webhookEnabled" type="checkbox" role="switch" />
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="settings-section-content" id="webhookSettings">
+            <label class="login-field" for="webhookUrl">
+              <span class="input-label">URL Webhook (mỗi dòng một URL)</span>
+              <textarea id="webhookUrl" rows="3" placeholder="https://discord.com/api/webhooks/...&#10;https://api.telegram.org/bot..." autocomplete="off" spellcheck="false"></textarea>
+            </label>
+            <div class="btn-row webhook-actions">
+              <button class="btn-util btn-primary-outline" id="saveWebhookBtn" type="button">Lưu Webhook</button>
+              <button class="btn-util" id="testWebhookBtn" type="button">Gửi thử nghiệm</button>
+            </div>
+            <div class="login-settings-status" id="webhookSettingsStatus" role="status" aria-live="polite"></div>
+            <div class="webhook-guide">
+              <div class="webhook-guide-title">Định dạng webhook hỗ trợ:</div>
+              <div class="webhook-guide-item">
+                <span class="webhook-guide-badge">Discord</span>
+                <code>https://discord.com/api/webhooks/ID/TOKEN</code>
+              </div>
+              <div class="webhook-guide-item">
+                <span class="webhook-guide-badge">Telegram</span>
+                <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;</code>
+              </div>
+              <div class="webhook-guide-note">
+                • Mỗi dòng một URL. Có thể cấu hình nhiều webhook cùng lúc.<br>
+                • <strong>Telegram</strong>: Hãy gửi tin nhắn <code>/start</code> cho bot trước khi thử nghiệm.
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Theme Mode Section -->
         <section class="settings-section" aria-labelledby="themeTitle">
           <div class="settings-section-head">
@@ -262,12 +340,30 @@
           </div>
         </section>
 
+        <!-- Reward Summary Section -->
+        <section class="settings-section" aria-labelledby="rewardSummaryTitle">
+          <div class="settings-section-head">
+            <h3 class="settings-section-title" id="rewardSummaryTitle">Thống kê phần thưởng</h3>
+          </div>
+          <div id="rewardTotalsList" class="reward-totals-list">
+            <div class="login-note">Chưa có thống kê phần thưởng nào.</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn-util" id="exportRewardsCsvBtn" type="button">
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" />
+              </svg>
+              <span>Xuất CSV</span>
+            </button>
+            <button class="btn-util btn-destructive-subtle" id="clearRewardsBtn" type="button">Xóa thống kê</button>
+          </div>
+        </section>
+
         <!-- Export / Import Config Section -->
         <section class="settings-section" aria-labelledby="configTitle">
           <h3 class="settings-section-title" id="configTitle">Xuất/nhập cấu hình</h3>
           <p class="login-note config-warning">
-            File xuất có thể chứa mật khẩu hoặc token ở dạng văn bản thuần. Chỉ lưu trữ
-            và chia sẻ file ở nơi an toàn.
+            File xuất an toàn: không lưu mật khẩu. Mật khẩu cần nhập lại sau khi chuyển sang thiết bị mới.
           </p>
           <div class="config-selection-actions">
             <button class="btn-util" id="toggleAllConfigBtn" type="button">
@@ -297,8 +393,20 @@
               <span>Chế độ giao diện (Sáng / Tối)</span>
             </label>
             <label>
+              <input type="checkbox" value="autoCheckMode" checked />
+              <span>Chế độ Auto kiểm tra (UTC / Định kỳ)</span>
+            </label>
+            <label>
+              <input type="checkbox" value="webhookEnabled" checked />
+              <span>Bật thông báo Webhook</span>
+            </label>
+            <label>
+              <input type="checkbox" value="rewardTotals" />
+              <span>Thống kê phần thưởng</span>
+            </label>
+            <label>
               <input type="checkbox" value="storeAccounts" />
-              <span>Tài khoản và mật khẩu cửa hàng</span>
+              <span>Tài khoản cửa hàng (không kèm mật khẩu)</span>
             </label>
             <label>
               <input type="checkbox" value="favoriteRoleIds" />

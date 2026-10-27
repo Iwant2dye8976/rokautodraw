@@ -48,6 +48,13 @@ async function cleanupStaleDrawStates() {
     }
 }
 void cleanupStaleDrawStates();
+void (async () => {
+    try {
+        const mall = await getCurrentMall();
+        const data = await getStoreData(mall);
+        updateBadge(data.drawsLeft);
+    } catch {}
+})();
 const LILITH_STORE_URL = "https://passport-global.lilith.com/login?client_id=gamepay_lglo&game_id=10043&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fstore.lilith.com&app_id=2104267&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Flilith.png&client_name=LiLith+Store&redirect_to=https://store.lilith.com/rok?tab=perks&login_way=S-A&locale=vi";
 const PLUTOMALL_RELOGIN_URL = "https://passport.pup.vn/login?client_id=gamepay_lglo&game_id=10043&subject=vn_gamota&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fwww.plutomall.com.vn&app_id=6626468&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Fexternal_app.png&client_name=%E1%BB%A8ng+d%E1%BB%A5ng+kh%C3%A1c&redirect_to=https%3A%2F%2Fwww.plutomall.com.vn%2Frok%2Fvn%3Ftab%3Dperks&login_way=S-A&locale=vi";
 const RELOGIN_ORIGINS = {
@@ -73,6 +80,55 @@ const STORE_CONFIG = {
         componentId: "1986689639322648578",
     }
 };
+
+
+function parseWebhookUrls(rawInput) {
+    if (!rawInput) return [];
+    const lines = Array.isArray(rawInput) ? rawInput : String(rawInput).split("\n");
+    return [...new Set(lines.map(u => String(u).trim()).filter(u => u.startsWith("http")))];
+}
+
+async function postSingleWebhook(webhookUrl, text) {
+    let body;
+    const headers = { "Content-Type": "application/json" };
+    if (webhookUrl.includes("discord.com/api/webhooks") || webhookUrl.includes("discordapp.com/api/webhooks")) {
+        body = JSON.stringify({ content: text });
+    } else if (webhookUrl.includes("api.telegram.org/bot")) {
+        const urlObj = new URL(webhookUrl);
+        const chatId = urlObj.searchParams.get("chat_id");
+        if (chatId) {
+            body = JSON.stringify({ chat_id: chatId, text: text });
+        } else {
+            body = JSON.stringify({ text: text });
+        }
+    } else {
+        body = JSON.stringify({ text: text, content: text });
+    }
+    const resp = await fetch(webhookUrl, {
+        method: "POST",
+        headers,
+        body,
+    });
+    return resp.ok;
+}
+
+async function sendWebhookMessage(text) {
+    try {
+        const { webhookEnabled, webhookUrl } = await chrome.storage.local.get([
+            "webhookEnabled",
+            "webhookUrl",
+        ]);
+        if (!webhookEnabled) return false;
+        const urls = parseWebhookUrls(webhookUrl);
+        if (urls.length === 0) return false;
+
+        const results = await Promise.allSettled(urls.map(url => postSingleWebhook(url, text)));
+        return results.some(r => r.status === "fulfilled" && r.value === true);
+    } catch (e) {
+        console.warn("[LilithDraw] Webhook send failed:", e);
+        return false;
+    }
+}
 
 const REWARDS = {
     "1986632021321089024": "200 Đá Quý",
@@ -127,42 +183,46 @@ async function getStoreAccount(mall, accountId) {
 }
 
 const RELOGIN_SEQUENCE_KEYS = [
-    "autoReloginSequenceMall",
-    "autoReloginSequenceAccountIds",
-    "autoReloginSequenceIndex",
-    "autoReloginSequenceFailures",
+    "autoReloginQueue",
+    "autoReloginQueueIndex",
+    "autoReloginQueueFailures",
 ];
 
 async function continueReloginSequence(expectedMall, expectedAccountId, failure) {
-    const sequence = await chrome.storage.session.get(RELOGIN_SEQUENCE_KEYS);
-    if (
-        sequence.autoReloginSequenceMall !== expectedMall ||
-        sequence.autoReloginSequenceAccountIds?.[sequence.autoReloginSequenceIndex] !== expectedAccountId
-    ) return;
+    const session = await chrome.storage.session.get(RELOGIN_SEQUENCE_KEYS);
+    const queue = session.autoReloginQueue;
+    const index = session.autoReloginQueueIndex ?? 0;
+    if (!Array.isArray(queue) || !queue[index]) return;
+    const current = queue[index];
+    if (current.mall !== expectedMall || current.accountId !== expectedAccountId) return;
 
-    const failures = sequence.autoReloginSequenceFailures || [];
+    const failures = session.autoReloginQueueFailures || [];
     if (failure) {
-        failures.push({ accountId: expectedAccountId, error: failure });
-        await chrome.storage.session.set({ autoReloginSequenceFailures: failures });
+        failures.push({ mall: expectedMall, accountId: expectedAccountId, error: failure });
+        await chrome.storage.session.set({ autoReloginQueueFailures: failures });
     }
 
-    let index = sequence.autoReloginSequenceIndex + 1;
-    while (index < sequence.autoReloginSequenceAccountIds.length) {
-        const accountId = sequence.autoReloginSequenceAccountIds[index];
+    let nextIndex = index + 1;
+    while (nextIndex < queue.length) {
+        const next = queue[nextIndex];
         await chrome.storage.session.set({
-            autoReloginSequenceIndex: index,
-            autoReloginSequenceFailures: failures,
+            autoReloginQueueIndex: nextIndex,
+            autoReloginQueueFailures: failures,
         });
-        if (await openReloginWindow(expectedMall, accountId)) return;
-        failures.push({ accountId, error: "Không thể mở tab đăng nhập." });
-        index++;
+        if (await openReloginWindow(next.mall, next.accountId)) return;
+        failures.push({ mall: next.mall, accountId: next.accountId, error: "Không thể mở tab đăng nhập." });
+        nextIndex++;
     }
     await chrome.storage.session.remove(RELOGIN_SEQUENCE_KEYS);
     await chrome.storage.local.set({
         autoReloginStatus: failures.length
-            ? `Đã kiểm tra xong các tài khoản ${STORE_NAMES[expectedMall]}; ${failures.length} tài khoản thất bại.`
-            : `Đã hoàn tất kiểm tra tuần tự các tài khoản ${STORE_NAMES[expectedMall]}.`,
+            ? `Đã kiểm tra xong các tài khoản; ${failures.length} tài khoản thất bại.`
+            : "Đã hoàn tất kiểm tra tuần tự các tài khoản.",
     });
+    if (failures.length > 0) {
+        const errorDetails = failures.map(f => `- ${f.mall} (${f.accountId}): ${f.error}`).join("\n");
+        void sendWebhookMessage(`⚠️ [ROK Auto] Đăng nhập thất bại ${failures.length} tài khoản:\n${errorDetails}`);
+    }
 }
 
 function isJwtExpired(token) {
@@ -192,19 +252,7 @@ function isExpiredTokenResponse(json, url) {
     const message = `${json?.msg ?? ""} ${json?.message ?? ""}`.toLowerCase();
     const hasExpiredTokenMessage =
         /token.{0,30}(expired|invalid|timeout|过期|失效|无效)|(?:expired|invalid|timeout|过期|失效|无效).{0,30}token|unauthori[sz]ed|not\s*login|user\s*not\s*login|session\s*expired|login\s*expired|auth\s*fail/i.test(message);
-    let userRolesAreEmpty = false;
-    try {
-        if (url) {
-            const parsedUrl = new URL(url);
-            userRolesAreEmpty =
-                parsedUrl.pathname.endsWith("/user-roles") &&
-                Array.isArray(json?.data?.list) &&
-                json.data.list.length === 0;
-        }
-    } catch {
-        // ignore malformed url
-    }
-    return hasExpiredTokenMessage || userRolesAreEmpty;
+    return hasExpiredTokenMessage;
 }
 
 async function getCurrentMall() {
@@ -234,12 +282,22 @@ async function getStoreData(mall, accountId) {
     };
 }
 
+function updateBadge(drawsLeft) {
+    const count = Number(drawsLeft);
+    const text = Number.isFinite(count) && count > 0 ? String(count) : "";
+    void chrome.action.setBadgeText({ text });
+    if (text) void chrome.action.setBadgeBackgroundColor({ color: "#cc785c" });
+}
+
 async function setStoreData(mall, partial, accountId) {
     const mapped = {};
     for (const [k, v] of Object.entries(partial)) {
         mapped[ask(mall, accountId, k)] = v;
     }
     await chrome.storage.local.set(mapped);
+    if (partial.drawsLeft !== undefined) {
+        updateBadge(partial.drawsLeft);
+    }
 }
 
 
@@ -405,7 +463,7 @@ async function openReloginWindow(mall, accountId) {
         if (reloginTab.id === undefined) throw new Error("Không tạo được tab đăng nhập");
 
         await chrome.storage.session.set({
-            autoReloginWindowId: activeTab.windowId,
+            autoReloginWindowId: reloginTab.windowId ?? targetWindowId,
             autoReloginTabId: reloginTab.id,
             autoReloginStartedAt: Date.now(),
             autoReloginMall: mall,
@@ -519,6 +577,7 @@ chrome.webRequest.onSendHeaders.addListener(
                 const appUid = urlObj.searchParams.get("appUid");
                 const appId = urlObj.searchParams.get("appId");
 
+                const storeUpdate = {};
                 const tokenPart = token.replace(/^Bearer\s+/i, "").split(".")[1];
                 if (tokenPart) {
                     const base64 = tokenPart.replace(/-/g, "+").replace(/_/g, "/");
@@ -526,23 +585,20 @@ chrome.webRequest.onSendHeaders.addListener(
                         atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="))
                     );
                     if (payload.client_id === "event_lglo") {
-                        const tokenTimestamp = Date.now();
-                        await setStoreData(mall, { token, tokenTimestamp, isValidToken: true }, accountId);
-                        console.log(`[LilithDraw][${mall}] Campaign token captured${accountId ? ` for account ${accountId}` : ""}`);
+                        storeUpdate.token = token;
+                        storeUpdate.tokenTimestamp = Date.now();
+                        storeUpdate.isValidToken = true;
                     }
                 }
 
                 if (appUid && appId) {
-                    await setStoreData(mall, { appUid, appId }, accountId);
-                    console.log(`[LilithDraw][${mall}] appUid and appId captured`);
-                    try {
-                        const isBackgroundRelogin = details.tabId === session.autoReloginTabId;
-                        if (!isBackgroundRelogin && (tab?.url?.includes("plutomall.com") || tab?.url?.includes("store.lilith.com"))) {
-                            await chrome.action.openPopup();
-                        }
-                    } catch (e) {
-                        console.warn("[LilithDraw] Could not open popup:", e.message);
-                    }
+                    storeUpdate.appUid = appUid;
+                    storeUpdate.appId = appId;
+                }
+
+                if (Object.keys(storeUpdate).length > 0) {
+                    await setStoreData(mall, storeUpdate, accountId);
+                    console.log(`[LilithDraw][${mall}] Data captured${accountId ? ` for account ${accountId}` : ""}`);
                 }
             } catch (e) {
                 console.error("[LilithDraw] webRequest error:", e);
@@ -554,87 +610,197 @@ chrome.webRequest.onSendHeaders.addListener(
 );
 
 
+
+const UTC_RESET_ALARM = "utcResetCheck";
+
+function getNextUtcResetTime(targetDay = "5") {
+    const now = new Date();
+    const target = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0, 5, 0, 0
+    ));
+
+    if (targetDay === "everyday" || targetDay === "daily") {
+        if (target.getTime() <= now.getTime()) {
+            target.setUTCDate(target.getUTCDate() + 1);
+        }
+        return target.getTime();
+    }
+
+    const dayNum = Number(targetDay);
+    let daysToAdd = (dayNum - now.getUTCDay() + 7) % 7;
+    if (daysToAdd === 0 && target.getTime() <= now.getTime()) {
+        daysToAdd = 7;
+    }
+    target.setUTCDate(target.getUTCDate() + daysToAdd);
+    return target.getTime();
+}
+
+function getTodayUtcDateString(d = new Date()) {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
+}
+
+function isUtcResetMissed(now, targetDay = "5", lastCheckedDate) {
+    const todayStr = getTodayUtcDateString(now);
+    if (lastCheckedDate === todayStr) return false;
+
+    const isTodayResetDay = targetDay === "everyday" || targetDay === "daily" || now.getUTCDay() === Number(targetDay);
+    if (!isTodayResetDay) return false;
+
+    const targetToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 5, 0, 0);
+    return now.getTime() >= targetToday;
+}
+
+async function checkAndCatchUpUtcReset() {
+    try {
+        const { autoCheckEnabled, autoCheckMode, utcResetDay = "5", lastUtcResetDate } = await chrome.storage.local.get([
+            "autoCheckEnabled",
+            "autoCheckMode",
+            "utcResetDay",
+            "lastUtcResetDate",
+        ]);
+        const enabled = autoCheckEnabled !== false;
+        const mode = autoCheckMode || "utcReset";
+        if (!enabled || mode !== "utcReset") return;
+
+        const now = new Date();
+        if (isUtcResetMissed(now, utcResetDay, lastUtcResetDate)) {
+            const todayStr = getTodayUtcDateString(now);
+            await chrome.storage.local.set({ lastUtcResetDate: todayStr });
+            console.log(`[LilithDraw] Catching up missed UTC reset for ${todayStr}`);
+            await autoDrawAllMalls("Bù lượt reset 00:05 UTC");
+        }
+    } catch (e) {
+        console.error("[LilithDraw] Could not catch up missed UTC reset:", e);
+    }
+}
+
 const AUTO_CHECK_ALARM = "dailyResetCheck";
 const DEFAULT_AUTO_CHECK_INTERVAL_MINUTES = 60;
 
-async function getAutoCheckSettings() {
-    const settings = await chrome.storage.local.get([
-        "autoCheckEnabled",
-        "autoCheckIntervalMinutes",
-    ]);
-    const intervalMinutes = Number.isSafeInteger(settings.autoCheckIntervalMinutes) &&
-        settings.autoCheckIntervalMinutes >= 1
-        ? settings.autoCheckIntervalMinutes
-        : DEFAULT_AUTO_CHECK_INTERVAL_MINUTES;
-    return {
-        enabled: settings.autoCheckEnabled !== false,
-        intervalMinutes,
-    };
-}
-
-async function ensureAutoCheckAlarm() {
+async function syncAutoCheckAlarms() {
     try {
-        const settings = await getAutoCheckSettings();
-        let alarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
+        const data = await chrome.storage.local.get([
+            "autoCheckEnabled",
+            "autoCheckMode",
+            "autoCheckIntervalMinutes",
+            "utcResetDay",
+        ]);
 
-        if (!settings.enabled) {
-            if (alarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
+        const enabled = data.autoCheckEnabled !== false;
+        const mode = data.autoCheckMode || "utcReset";
+        const utcResetDay = data.utcResetDay || "5";
+        const intervalMinutes = Number.isSafeInteger(data.autoCheckIntervalMinutes) &&
+            data.autoCheckIntervalMinutes >= 1
+            ? data.autoCheckIntervalMinutes
+            : DEFAULT_AUTO_CHECK_INTERVAL_MINUTES;
+
+        let intervalAlarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
+        let utcAlarm = await chrome.alarms.get(UTC_RESET_ALARM);
+
+        if (!enabled) {
+            if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
+            if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
             console.log("[LilithDraw] Automatic check is disabled");
-            return false;
+            return;
         }
 
-        if (alarm && alarm.periodInMinutes === settings.intervalMinutes) return true;
-
-        if (alarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
-        await chrome.alarms.create(AUTO_CHECK_ALARM, {
-            periodInMinutes: settings.intervalMinutes,
-        });
-        alarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
-        if (!alarm) throw new Error("Alarm was not present after creation");
-        console.log(
-            `[LilithDraw] Automatic check active: every ${alarm.periodInMinutes} minute(s); next at ${new Date(alarm.scheduledTime).toLocaleString()}`
-        );
-        return true;
-    } catch (error) {
-        console.error("[LilithDraw] Could not ensure automatic check alarm:", error);
-        return false;
+        if (mode === "utcReset") {
+            if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
+            const periodInMinutes = (utcResetDay === "everyday" || utcResetDay === "daily")
+                ? 24 * 60
+                : 7 * 24 * 60;
+            if (!utcAlarm || utcAlarm.periodInMinutes !== periodInMinutes) {
+                const nextTime = getNextUtcResetTime(utcResetDay);
+                if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
+                await chrome.alarms.create(UTC_RESET_ALARM, { when: nextTime, periodInMinutes });
+                utcAlarm = await chrome.alarms.get(UTC_RESET_ALARM);
+                if (utcAlarm) {
+                    console.log(`[LilithDraw] UTC reset alarm active (${utcResetDay}); next at ${new Date(utcAlarm.scheduledTime).toUTCString()}`);
+                }
+            }
+        } else {
+            // "interval" mode (custom interval)
+            if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
+            if (!intervalAlarm || intervalAlarm.periodInMinutes !== intervalMinutes) {
+                if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
+                await chrome.alarms.create(AUTO_CHECK_ALARM, { periodInMinutes: intervalMinutes });
+                intervalAlarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
+                if (intervalAlarm) {
+                    console.log(`[LilithDraw] Interval check active: every ${intervalAlarm.periodInMinutes}m; next at ${new Date(intervalAlarm.scheduledTime).toLocaleString()}`);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[LilithDraw] Could not sync auto check alarms:", e);
     }
 }
 
 chrome.runtime.onStartup.addListener(() => {
-    void ensureAutoCheckAlarm().then(async () => {
-        const settings = await getAutoCheckSettings();
-        if (settings.enabled) await autoDrawAllMalls("Khởi động Chrome");
+    void syncAutoCheckAlarms().then(async () => {
+        const data = await chrome.storage.local.get(["autoCheckEnabled", "autoCheckMode"]);
+        const enabled = data.autoCheckEnabled !== false;
+        const mode = data.autoCheckMode || "utcReset";
+        if (enabled) {
+            if (mode === "interval") {
+                await autoDrawAllMalls("Khởi động Chrome");
+            } else {
+                await checkAndCatchUpUtcReset();
+            }
+        }
     }).catch(error => {
-        console.error("[LilithDraw] Could not check automatic-check settings at startup:", error);
+        console.error("[LilithDraw] Startup auto check failed:", error);
     });
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-    void ensureAutoCheckAlarm();
+    void syncAutoCheckAlarms();
+    void checkAndCatchUpUtcReset();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === AUTO_CHECK_ALARM) {
-        console.log("[LilithDraw] Automatic check alarm fired");
-        void getAutoCheckSettings().then(async settings => {
-            if (settings.enabled) await autoDrawAllMalls("Alarm định kỳ");
-        }).catch(error => {
-            console.error("[LilithDraw] Scheduled auto check failed:", error);
-        });
+        console.log("[LilithDraw] Automatic interval check alarm fired");
+        void (async () => {
+            const data = await chrome.storage.local.get(["autoCheckEnabled", "autoCheckMode"]);
+            const enabled = data.autoCheckEnabled !== false;
+            const mode = data.autoCheckMode || "utcReset";
+            if (enabled && mode === "interval") {
+                await autoDrawAllMalls("Alarm định kỳ");
+            }
+        })().catch(error => console.error("[LilithDraw] Scheduled interval check failed:", error));
+    } else if (alarm.name === UTC_RESET_ALARM) {
+        console.log("[LilithDraw] UTC Reset check alarm fired");
+        void (async () => {
+            const data = await chrome.storage.local.get(["autoCheckEnabled", "autoCheckMode"]);
+            const enabled = data.autoCheckEnabled !== false;
+            const mode = data.autoCheckMode || "utcReset";
+            if (!enabled || mode !== "utcReset") return;
+            const todayStr = getTodayUtcDateString();
+            await chrome.storage.local.set({ lastUtcResetDate: todayStr });
+            await autoDrawAllMalls("Reset 00:05 UTC");
+        })().catch(error => console.error("[LilithDraw] Scheduled UTC reset check failed:", error));
     }
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (
-        areaName === "local" &&
-        (changes.autoCheckEnabled || changes.autoCheckIntervalMinutes)
-    ) {
-        void ensureAutoCheckAlarm();
+    if (areaName === "local") {
+        if (
+            changes.autoCheckEnabled ||
+            changes.autoCheckMode ||
+            changes.autoCheckIntervalMinutes ||
+            changes.utcResetDay
+        ) {
+            void syncAutoCheckAlarms();
+            void checkAndCatchUpUtcReset();
+        }
     }
 });
 
-void ensureAutoCheckAlarm();
+void syncAutoCheckAlarms();
+void checkAndCatchUpUtcReset();
 
 async function refreshStoreAfterRelogin(mall, accountId) {
     const {
@@ -671,7 +837,7 @@ async function refreshStoreAfterRelogin(mall, accountId) {
     if (
         !token ||
         !Number.isFinite(data[ask(mall, accountId, "tokenTimestamp")]) ||
-        data[ask(mall, accountId, "tokenTimestamp")] <= autoReloginReadyAt ||
+        data[ask(mall, accountId, "tokenTimestamp")] < autoReloginStartedAt ||
         !data[ask(mall, accountId, "appUid")] ||
         !data[ask(mall, accountId, "appId")]
     ) return;
@@ -684,6 +850,9 @@ async function refreshStoreAfterRelogin(mall, accountId) {
         await chrome.storage.local.set({
             autoReloginStatus: `Đăng nhập ${STORE_NAMES[mall]} thành công; đã làm mới ${roles.length} nhân vật, còn ${totalDrawsLeft} lượt.`,
         });
+        if (totalDrawsLeft > 0) {
+            void autoDrawMall(mall, "Tự động quay sau đăng nhập", accountId);
+        }
     } catch (error) {
         refreshError = error.message;
         await chrome.storage.local.set({
@@ -904,18 +1073,36 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
+    const expiredQueue = [];
     for (const mall of Object.keys(STORE_CONFIG)) {
         const accounts = await getStoreAccounts(mall);
-        const profiles = accounts.length > 0 ? accounts : [null];
+        const profiles = accounts.length > 0 ? accounts : [{ id: "legacy" }];
         for (const account of profiles) {
+            const accountId = account.id;
             try {
-                await autoDrawMall(mall, trigger, account?.id);
+                const token = await getToken(mall, accountId);
+                if (token && isJwtExpired(token)) {
+                    expiredQueue.push({ mall, accountId });
+                    continue;
+                }
+                await autoDrawMall(mall, trigger, accountId);
             } catch (e) {
                 console.error(
-                    `[LilithDraw][${mall}][${account?.id || "legacy"}] Scheduled draw failed:`,
+                    `[LilithDraw][${mall}][${accountId}] Scheduled draw failed:`,
                     e
                 );
             }
+        }
+    }
+    if (expiredQueue.length > 0) {
+        const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
+        if (autoReloginEnabled === true) {
+            await chrome.storage.session.set({
+                autoReloginQueue: expiredQueue,
+                autoReloginQueueIndex: 0,
+                autoReloginQueueFailures: [],
+            });
+            await openReloginWindow(expiredQueue[0].mall, expiredQueue[0].accountId);
         }
     }
 }
@@ -1115,32 +1302,18 @@ async function getTotalDrawsLeft(token, roles, mall, accountId) {
         await setStoreData(mall, { drawsLeft: 0, lastCheck }, accountId);
         return 0;
     }
-    const counts = [];
-    const chunkSize = 3;
-    for (let i = 0; i < roles.length; i += chunkSize) {
-        const chunk = roles.slice(i, i + chunkSize);
-        const results = await Promise.allSettled(
-            chunk.map(role => getManifest(token, role, mall, accountId))
-        );
-        for (const res of results) {
-            if (res.status === "fulfilled") {
-                try {
-                    const count = getRoleDrawCount(res.value, mall);
-                    counts.push(count);
-                } catch (countErr) {
-                    console.warn(`[LilithDraw][${mall}] Error parsing role draw count:`, countErr);
-                }
-            } else {
-                console.warn(`[LilithDraw][${mall}] Failed to fetch manifest for role:`, res.reason);
-            }
-        }
-        if (i + chunkSize < roles.length) {
-            await new Promise(r => setTimeout(r, 200));
+    // Lượt quay là dùng chung cho toàn bộ tài khoản (account-wide quota pool).
+    // Chỉ cần kiểm tra manifest của nhân vật đầu tiên thành công.
+    let total = 0;
+    for (const role of roles) {
+        try {
+            const manifest = await getManifest(token, role, mall, accountId);
+            total = getRoleDrawCount(manifest, mall);
+            break;
+        } catch (e) {
+            console.warn(`[LilithDraw][${mall}] Error getting draw count for role ${role.roleId}:`, e);
         }
     }
-    // Lượt quay là dùng chung cho toàn bộ tài khoản (account-wide quota pool).
-    // Không cộng dồn (total += count) vì các nhân vật cùng chia sẻ số lượt của tài khoản.
-    const total = counts.length > 0 ? Math.max(...counts) : 0;
     const lastCheck = new Date().toLocaleString();
     await setStoreData(mall, { drawsLeft: total, lastCheck }, accountId);
     return total;
@@ -1180,6 +1353,20 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     const startedAt = Date.now();
     const maxRuntimeMs = 4 * 60 * 1000;
     const log = [];
+    const sessionRewards = {};
+    const flushSessionRewards = async () => {
+        if (Object.keys(sessionRewards).length === 0) return;
+        try {
+            const data = await chrome.storage.local.get("rewardTotals");
+            const rewardTotals = data.rewardTotals || {};
+            for (const [name, count] of Object.entries(sessionRewards)) {
+                rewardTotals[name] = (rewardTotals[name] || 0) + count;
+            }
+            await chrome.storage.local.set({ rewardTotals });
+        } catch (e) {
+            console.warn("[LilithDraw] Could not flush reward totals:", e);
+        }
+    };
     const reportProgress = async () => {
         if (typeof onProgress === "function") {
             try {
@@ -1234,6 +1421,7 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
         if (isOutOfResources) break;
         if (Date.now() - startedAt >= maxRuntimeMs) {
             log.push("Đã tạm dừng để tránh quá thời gian chạy; có thể bấm quay lại để tiếp tục.");
+            await flushSessionRewards();
             await reportProgress();
             return log;
         }
@@ -1254,6 +1442,7 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                             (rewardId ? `Phần thưởng ${rewardId}` : null);
                         if (!reward) throw new Error(result?.msg || "Phản hồi quay thưởng thiếu thông tin phần thưởng");
                         log.push(`[${role.name}] x1 ${reward}`);
+                        sessionRewards[reward] = (sessionRewards[reward] || 0) + 1;
                         drawCount--;
                         await reportProgress();
 
@@ -1290,9 +1479,15 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                         }
                     }
                 }
+                if (drawCount === 0) {
+                    isOutOfResources = true;
+                    break;
+                }
             } else {
                 log.push(`[${role.name}] Không còn lượt quay nào`);
                 await reportProgress();
+                isOutOfResources = true;
+                break;
             }
         } catch (e) {
             const errMsg = e.message || "";
@@ -1325,8 +1520,15 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
         console.warn("[LilithDraw] Could not refresh drawsLeft after runDraws:", e);
     }
 
+    await flushSessionRewards();
     log.push("Done!");
     await reportProgress();
+    const wonItems = log.filter(line => line.includes("] x1 "));
+    if (wonItems.length > 0) {
+        const storeName = STORE_CONFIG[mall]?.name || mall;
+        const notifyText = `🎲 [${storeName}] Hoàn tất ${wonItems.length} lượt quay!\n${wonItems.join("\n")}`;
+        void sendWebhookMessage(notifyText);
+    }
     return log;
 }
 
@@ -1477,11 +1679,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sendResponse({ error: "Một luồng đăng nhập lại đang chạy. Hãy chờ luồng đó hoàn tất rồi thử lại." });
                 return;
             }
+            const queue = requestedIds.map(id => ({ mall: msg.mall, accountId: id }));
             await chrome.storage.session.set({
-                autoReloginSequenceMall: msg.mall,
-                autoReloginSequenceAccountIds: requestedIds,
-                autoReloginSequenceIndex: 0,
-                autoReloginSequenceFailures: [],
+                autoReloginQueue: queue,
+                autoReloginQueueIndex: 0,
+                autoReloginQueueFailures: [],
             });
             const started = await openReloginWindow(msg.mall, requestedIds[0]);
             if (!started) {
@@ -1648,6 +1850,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return true;
     }
 
+    if (msg.action === "drawAll") {
+        (async () => {
+            await autoDrawAllMalls("Quay tất cả");
+            sendResponse({ ok: true });
+        })().catch(error => sendResponse({ error: error.message }));
+        return true;
+    }
+
+    if (msg.action === "testWebhook") {
+        (async () => {
+            const { webhookUrl } = await chrome.storage.local.get("webhookUrl");
+            const urls = parseWebhookUrls(msg.url || webhookUrl);
+            if (urls.length === 0) {
+                sendResponse({ ok: false, error: "Chưa có URL webhook nào hợp lệ." });
+                return;
+            }
+            const results = await Promise.allSettled(
+                urls.map(u => postSingleWebhook(u, msg.text || "🔔 [ROK Auto] Kiểm tra kết nối Webhook thành công!"))
+            );
+            const successCount = results.filter(r => r.status === "fulfilled" && r.value === true).length;
+            sendResponse({
+                ok: successCount > 0,
+                successCount,
+                totalCount: urls.length,
+                error: successCount === 0 ? "Tất cả webhook đều gửi thất bại." : undefined
+            });
+        })().catch(error => sendResponse({ ok: false, error: error.message }));
+        return true;
+    }
+
     if (msg.action === "drawNow") {
         let responseSent = false;
         (async () => {
@@ -1690,24 +1922,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     }
                 }
                 await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: ["Bắt đầu quay thưởng..."] });
-                sendResponse({ ok: true });
-                responseSent = true;
                 const log = await runDraws(token, mall, false, accountId, async currentLog => {
                     await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: [...currentLog] });
                 });
                 await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: log });
+                sendResponse({ ok: true, log });
+                responseSent = true;
             } catch (error) {
                 if (!responseSent) {
                     sendResponse({ error: error.message });
                     responseSent = true;
-                } else {
-                    try {
-                        await chrome.storage.local.set({
-                            [ask(mall, accountId, "drawLog")]: [`Lỗi khi quay thưởng: ${error.message}`]
-                        });
-                    } catch (storageError) {
-                        console.error(`[LilithDraw][${mall}] Could not save draw error:`, storageError);
-                    }
+                }
+                try {
+                    await chrome.storage.local.set({
+                        [ask(mall, accountId, "drawLog")]: [`Lỗi khi quay thưởng: ${error.message}`]
+                    });
+                } catch (storageError) {
+                    console.error(`[LilithDraw][${mall}] Could not save draw error:`, storageError);
                 }
             } finally {
                 activeDraws.delete(profileKey);

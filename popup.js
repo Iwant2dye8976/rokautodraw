@@ -13,6 +13,19 @@ const autoCheckCheckbox = document.getElementById("autoCheckEnabled");
 const autoCheckToggleLabel = document.getElementById("autoCheckToggleLabel");
 const autoCheckIntervalInput = document.getElementById("autoCheckIntervalMinutes");
 const autoCheckSettingsStatus = document.getElementById("autoCheckSettingsStatus");
+const autoCheckModeRadios = [...document.querySelectorAll('input[name="autoCheckMode"]')];
+const utcResetPanel = document.getElementById("utcResetPanel");
+const intervalPanel = document.getElementById("intervalPanel");
+const utcResetDaySelect = document.getElementById("utcResetDaySelect");
+
+function applyAutoCheckMode(mode) {
+    const activeMode = mode === "interval" ? "interval" : "utcReset";
+    for (const radio of autoCheckModeRadios) {
+        radio.checked = (radio.value === activeMode);
+    }
+    if (utcResetPanel) utcResetPanel.hidden = (activeMode !== "utcReset");
+    if (intervalPanel) intervalPanel.hidden = (activeMode !== "interval");
+}
 const autoReloginCheckbox = document.getElementById("autoReloginEnabled");
 const autoReloginToggleLabel = document.getElementById("autoReloginToggleLabel");
 const loginSettingsStatus = document.getElementById("loginSettingsStatus");
@@ -117,12 +130,35 @@ const additionalSettingsDisclosure = document.getElementById("additionalSettings
 const additionalSettingsHead = document.getElementById("additionalSettingsHead") || document.querySelector(".additional-settings-head");
 const additionalSettingsBody = document.getElementById("additionalSettingsBody");
 const CONFIG_FORMAT = "rok-weekly-auto-config";
+
+function exportToCsv(filename, rows) {
+    const csvContent = "\uFEFF" + rows
+        .map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+}
+
 const CONFIG_VERSION = 1;
 const CONFIG_SETTING_VALIDATORS = {
     autoReloginEnabled: value => typeof value === "boolean",
     autoCheckIntervalMinutes: value => Number.isSafeInteger(value) && value >= 1,
     autoCheckEnabled: value => typeof value === "boolean",
+    autoCheckMode: value => typeof value === "string" && ["utcReset", "interval"].includes(value),
     theme: value => typeof value === "string" && ["light", "dark", "system"].includes(value),
+    utcResetSyncEnabled: value => typeof value === "boolean",
+    utcResetDay: value => typeof value === "string" || Number.isInteger(value),
+    lastUtcResetDate: value => typeof value === "string",
+    webhookEnabled: value => typeof value === "boolean",
+    webhookUrl: value => typeof value === "string",
+    rewardTotals: value => value && typeof value === "object" && !Array.isArray(value),
     storeAccounts: value => value && typeof value === "object" &&
         !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
             Array.isArray(value[mall]) &&
@@ -165,7 +201,9 @@ const utcClockFormatter = new Intl.DateTimeFormat("en-GB", {
 });
 
 function updateUtcClock() {
-    utcClockEl.textContent = `UTC ${utcClockFormatter.format(new Date())}-${new Date().toLocaleDateString()}`;
+    const now = new Date();
+    const utcDate = now.toISOString().slice(0, 10);
+    utcClockEl.textContent = `UTC ${utcClockFormatter.format(now)} - ${utcDate}`;
 }
 
 function showAccountViewLoading() {
@@ -380,13 +418,17 @@ function matchesSearch(role, rawQuery) {
            normalizeSearchText(svr).includes(qNorm);
 }
 
+let searchDebounceTimer;
 if (charSearchInput) {
     charSearchInput.addEventListener("input", () => {
         const hasText = Boolean(charSearchInput.value);
         if (clearCharSearchBtn) clearCharSearchBtn.hidden = !hasText;
-        if (cachedRoles?.length > 0) {
-            renderChars(cachedRoles, cachedMall || getSelectedMall(), cachedAccountId || getSelectedAccountId());
-        }
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            if (cachedRoles?.length > 0) {
+                renderChars(cachedRoles, cachedMall || getSelectedMall(), cachedAccountId || getSelectedAccountId());
+            }
+        }, 120);
     });
 }
 
@@ -560,7 +602,6 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
         div.append(avatarWrap, nameWrap, favoriteButton, copyButton, server);
         charList.appendChild(div);
     }
-    attachHistoryListeners();
 }
 
 function renderDrawsLeft(drawsLeft) {
@@ -720,10 +761,6 @@ function openCharacterHistory(roleId, roleName) {
     );
 }
 
-function attachHistoryListeners() {
-    // Listeners are attached directly to each .char-row during renderChars()
-}
-
 function showHistory(character, history) {
     document.getElementById("main").style.display = "none";
     const existing = document.getElementById("detailView");
@@ -735,6 +772,12 @@ function showHistory(character, history) {
     <nav class="detail-nav">
       <button id="backBtn" class="back-btn">${SVG_ICONS.arrowLeft}<span>Quay lại</span></button>
       <span class="detail-nav-title">Lịch sử quay</span>
+      <button id="exportHistoryCsvBtn" class="detail-csv-btn" type="button" title="Xuất file CSV" aria-label="Xuất file CSV">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" />
+        </svg>
+        <span>Xuất CSV</span>
+      </button>
     </nav>
     <div class="content">
       <div class="char-hero-card glass">
@@ -759,6 +802,31 @@ function showHistory(character, history) {
     if (!setImageSource(avatar, character?.avatar)) showFallback();
     div.querySelector(".hero-name").textContent = String(character?.name ?? "Không rõ tên");
     div.querySelector(".hero-svr").textContent = `Server #${character?.svrId ?? "?"}`;
+
+    const exportHistBtn = div.querySelector("#exportHistoryCsvBtn");
+    if (exportHistBtn) {
+        exportHistBtn.addEventListener("click", () => {
+            const histEntries = Array.isArray(history?.data?.list) ? history.data.list : [];
+            if (histEntries.length === 0) {
+                alert("Chưa có lịch sử quay để xuất.");
+                return;
+            }
+            const rows = [
+                ["STT", "Thời gian", "Nhân vật", "Server", "Phần thưởng", "Số lượng", "Mã phần thưởng"],
+                ...histEntries.map((item, idx) => [
+                    idx + 1,
+                    item.timestamp ? new Date(item.timestamp * 1000).toLocaleString("vi-VN") : "",
+                    character?.name || "",
+                    character?.svrId || "",
+                    item.rewardName || "-",
+                    item.num || 1,
+                    item.rewardId || ""
+                ])
+            ];
+            const charNameSafe = (character?.name || "character").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+            exportToCsv(`rok-history-${charNameSafe}-${character?.roleId || "unknown"}.csv`, rows);
+        });
+    }
 
     const historyList = div.querySelector(".history-list");
     const entries = Array.isArray(history?.data?.list) ? history.data.list : [];
@@ -1588,6 +1656,12 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
     try {
         const accountDataKeys = new Set(["favoriteRoleIds", "tokens"]);
         const storageKeys = selectedKeys.filter(key => !accountDataKeys.has(key));
+        if (selectedKeys.includes("webhookEnabled") && !storageKeys.includes("webhookUrl")) {
+            storageKeys.push("webhookUrl");
+        }
+        if (selectedKeys.includes("autoCheckMode") && !storageKeys.includes("utcResetDay")) {
+            storageKeys.push("utcResetDay");
+        }
         const storedSettings = storageKeys.length > 0
             ? await chrome.storage.local.get(storageKeys)
             : {};
@@ -1595,7 +1669,10 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
             autoReloginEnabled: autoReloginCheckbox.checked,
             autoCheckIntervalMinutes: Number(autoCheckIntervalInput.value),
             autoCheckEnabled: autoCheckCheckbox.checked,
+            autoCheckMode: document.querySelector('input[name="autoCheckMode"]:checked')?.value || "utcReset",
             theme: currentThemeSetting,
+            utcResetDay: utcResetDaySelect?.value || "5",
+            webhookEnabled: Boolean(document.getElementById("webhookEnabled")?.checked),
         };
         const settings = {};
         for (const key of selectedKeys) {
@@ -1604,6 +1681,21 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
             } else if (Object.prototype.hasOwnProperty.call(currentSettings, key)) {
                 settings[key] = currentSettings[key];
             }
+        }
+        if (selectedKeys.includes("autoCheckMode") && (storedSettings.utcResetDay || utcResetDaySelect?.value)) {
+            settings.utcResetDay = storedSettings.utcResetDay || utcResetDaySelect?.value || "5";
+        }
+        if (selectedKeys.includes("webhookEnabled") && typeof storedSettings.webhookUrl === "string") {
+            settings.webhookUrl = storedSettings.webhookUrl;
+        }
+        if (settings.storeAccounts && typeof settings.storeAccounts === "object") {
+            const stripped = {};
+            for (const [mall, accounts] of Object.entries(settings.storeAccounts)) {
+                stripped[mall] = Array.isArray(accounts)
+                    ? accounts.map(acc => ({ id: acc.id, username: acc.username, password: "" }))
+                    : [];
+            }
+            settings.storeAccounts = stripped;
         }
         if (selectedKeys.includes("favoriteRoleIds")) {
             const favoriteKeysByMall = {};
@@ -1783,6 +1875,12 @@ importConfigFile.addEventListener("change", async () => {
         if (Object.prototype.hasOwnProperty.call(importedSettings, "autoCheckEnabled")) {
             autoCheckCheckbox.checked = importedSettings.autoCheckEnabled;
         }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "autoCheckMode")) {
+            applyAutoCheckMode(importedSettings.autoCheckMode);
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "utcResetDay") && utcResetDaySelect) {
+            utcResetDaySelect.value = String(importedSettings.utcResetDay);
+        }
         if (Object.prototype.hasOwnProperty.call(importedSettings, "autoCheckIntervalMinutes")) {
             autoCheckIntervalInput.value = String(importedSettings.autoCheckIntervalMinutes);
             updateIntervalPresetActive(Number(importedSettings.autoCheckIntervalMinutes));
@@ -1812,11 +1910,170 @@ importConfigFile.addEventListener("change", async () => {
     }
 });
 
+
+// --- Auto Check Mode & UTC Reset Setting ---
+for (const radio of autoCheckModeRadios) {
+    radio.addEventListener("change", async () => {
+        if (!radio.checked) return;
+        const mode = radio.value;
+        applyAutoCheckMode(mode);
+        try {
+            await chrome.storage.local.set({ autoCheckMode: mode });
+        } catch (error) {
+            console.error("Could not save autoCheckMode:", error);
+        }
+    });
+}
+
+if (utcResetDaySelect) {
+    utcResetDaySelect.addEventListener("change", async () => {
+        try {
+            await chrome.storage.local.set({ utcResetDay: utcResetDaySelect.value });
+        } catch (error) {
+            console.error("Could not save utcResetDay:", error);
+        }
+    });
+}
+
+// --- Webhook Settings ---
+const webhookEnabledCheckbox = document.getElementById("webhookEnabled");
+const webhookToggleLabel = document.getElementById("webhookToggleLabel");
+const webhookUrlInput = document.getElementById("webhookUrl");
+const saveWebhookBtn = document.getElementById("saveWebhookBtn");
+const testWebhookBtn = document.getElementById("testWebhookBtn");
+const webhookSettingsStatus = document.getElementById("webhookSettingsStatus");
+
+function setWebhookStatus(msg) {
+    if (webhookSettingsStatus) {
+        webhookSettingsStatus.textContent = msg;
+        setTimeout(() => {
+            if (webhookSettingsStatus.textContent === msg) {
+                webhookSettingsStatus.textContent = "";
+            }
+        }, 4000);
+    }
+}
+
+if (webhookEnabledCheckbox && webhookUrlInput) {
+    chrome.storage.local.get(["webhookEnabled", "webhookUrl"], data => {
+        webhookEnabledCheckbox.checked = Boolean(data.webhookEnabled);
+        if (webhookToggleLabel) {
+            webhookToggleLabel.textContent = data.webhookEnabled ? "Bật" : "Tắt";
+        }
+        webhookUrlInput.value = data.webhookUrl || "";
+    });
+
+    webhookEnabledCheckbox.addEventListener("change", async () => {
+        const enabled = webhookEnabledCheckbox.checked;
+        if (webhookToggleLabel) {
+            webhookToggleLabel.textContent = enabled ? "Bật" : "Tắt";
+        }
+        await chrome.storage.local.set({ webhookEnabled: enabled });
+        setWebhookStatus(enabled ? "Đã bật thông báo Webhook." : "Đã tắt thông báo Webhook.");
+    });
+
+    function parseWebhookUrls(raw) {
+        if (!raw) return [];
+        const lines = Array.isArray(raw) ? raw : String(raw).split("\n");
+        return [...new Set(lines.map(u => String(u).trim()).filter(u => u.startsWith("http")))];
+    }
+
+    if (saveWebhookBtn) {
+        saveWebhookBtn.addEventListener("click", async () => {
+            const urlText = webhookUrlInput.value.trim();
+            await chrome.storage.local.set({ webhookUrl: urlText });
+            const count = parseWebhookUrls(urlText).length;
+            setWebhookStatus(count > 0 ? `Đã lưu ${count} URL Webhook.` : "Đã lưu Webhook (danh sách trống).");
+        });
+    }
+
+    if (testWebhookBtn) {
+        testWebhookBtn.addEventListener("click", () => {
+            testWebhookBtn.disabled = true;
+            setWebhookStatus("Đang gửi thử nghiệm...");
+            const currentVal = webhookUrlInput.value.trim();
+            chrome.runtime.sendMessage({ action: "testWebhook", url: currentVal }, res => {
+                testWebhookBtn.disabled = false;
+                if (res?.ok) {
+                    const success = res.successCount ?? 1;
+                    const total = res.totalCount ?? success;
+                    setWebhookStatus(`Gửi thành công ${success}/${total} webhook!`);
+                } else {
+                    setWebhookStatus(`Gửi thất bại: ${res?.error || "Vui lòng kiểm tra lại URL"}`);
+                }
+            });
+        });
+    }
+}
+
+// --- Reward Totals Summary ---
+async function renderRewardTotals() {
+    const container = document.getElementById("rewardTotalsList");
+    if (!container) return;
+    const data = await chrome.storage.local.get("rewardTotals");
+    const rewardTotals = data.rewardTotals || {};
+    const entries = Object.entries(rewardTotals).sort((a, b) => b[1] - a[1]);
+    container.innerHTML = "";
+    if (entries.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "login-note";
+        empty.textContent = "Chưa có thống kê phần thưởng nào.";
+        container.appendChild(empty);
+        return;
+    }
+    for (const [name, count] of entries) {
+        const row = document.createElement("div");
+        row.className = "reward-total-item";
+        const nameEl = document.createElement("span");
+        nameEl.className = "reward-total-name";
+        nameEl.textContent = name;
+        const countEl = document.createElement("span");
+        countEl.className = "reward-total-count";
+        countEl.textContent = `x${count}`;
+        row.append(nameEl, countEl);
+        container.appendChild(row);
+    }
+}
+
+const exportRewardsCsvBtn = document.getElementById("exportRewardsCsvBtn");
+if (exportRewardsCsvBtn) {
+    exportRewardsCsvBtn.addEventListener("click", async () => {
+        const data = await chrome.storage.local.get("rewardTotals");
+        const rewardTotals = data.rewardTotals || {};
+        const entries = Object.entries(rewardTotals).sort((a, b) => b[1] - a[1]);
+        if (entries.length === 0) {
+            alert("Chưa có phần thưởng nào để xuất.");
+            return;
+        }
+        const rows = [
+            ["Phần thưởng", "Số lượng"],
+            ...entries.map(([name, count]) => [name, count]),
+        ];
+        exportToCsv(`rok-reward-summary-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    });
+}
+
+const clearRewardsBtn = document.getElementById("clearRewardsBtn");
+if (clearRewardsBtn) {
+    clearRewardsBtn.addEventListener("click", async () => {
+        if (!confirm("Bạn có chắc muốn xóa toàn bộ thống kê phần thưởng?")) return;
+        await chrome.storage.local.remove("rewardTotals");
+        await renderRewardTotals();
+    });
+}
+renderRewardTotals();
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
     if (changes.autoCheckEnabled) {
         autoCheckCheckbox.checked = changes.autoCheckEnabled.newValue !== false;
         updateSwitchToggleLabels();
+    }
+    if (changes.autoCheckMode) {
+        applyAutoCheckMode(changes.autoCheckMode.newValue || "utcReset");
+    }
+    if (changes.utcResetDay && utcResetDaySelect) {
+        utcResetDaySelect.value = String(changes.utcResetDay.newValue);
     }
     if (changes.autoCheckIntervalMinutes) {
         const val = changes.autoCheckIntervalMinutes.newValue;
@@ -1858,11 +2115,17 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
             btn.textContent = isDrawing ? "Đang quay…" : "Quay thưởng ngay";
         }
     }
+    const drawsLeftKey = accountStorageKey(mall, accountId, "drawsLeft");
+    if (changes.rewardTotals) {
+        renderRewardTotals();
+    }
+    if (changes[drawsLeftKey]) {
+        renderDrawsLeft(changes[drawsLeftKey].newValue);
+    }
     if (
         changes[accountStorageKey(mall, accountId, "token")] ||
         changes[accountStorageKey(mall, accountId, "isValidToken")] ||
-        changes[accountStorageKey(mall, accountId, "roles")] ||
-        changes[accountStorageKey(mall, accountId, "drawsLeft")]
+        changes[accountStorageKey(mall, accountId, "roles")]
     ) {
         renderCache(mall);
     }
@@ -1910,7 +2173,6 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
     }
     const mall = getSelectedMall();
     const accountId = getSelectedAccountId();
-    const drawLogKey = accountStorageKey(mall, accountId, "drawLog");
     const btn = document.getElementById("drawNowBtn");
     btn.disabled = true;
     btn.textContent = "Đang quay…";
@@ -1918,68 +2180,22 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
     logEl.textContent = "Bắt đầu quay thưởng...";
 
     chrome.runtime.sendMessage({ action: "drawNow", mall, accountId }, (res) => {
+        btn.disabled = false;
+        btn.textContent = "Quay tài khoản này";
         if (chrome.runtime.lastError) {
             setStatus(chrome.runtime.lastError.message);
-            btn.disabled = false;
-            btn.textContent = "Quay thưởng ngay";
             return;
         }
         if (res?.error) {
             const isExp = /hết hạn|expired|invalid|401|403/i.test(res.error);
             setStatus(isExp ? "Token đã hết hạn" : (res.error.length > 25 ? res.error.slice(0, 25) + "…" : res.error), false);
-            btn.disabled = false;
-            btn.textContent = "Quay thưởng ngay";
             return;
         }
         if (res?.drawsLeft === 0) {
-            btn.disabled = false;
-            btn.textContent = "Quay thưởng ngay";
             logEl.textContent = "Kiểm tra hoàn tất: không còn lượt quay nào.";
             return;
         }
-
-        const pollStartedAt = Date.now();
-        const poll = setInterval(async () => {
-            if (Date.now() - pollStartedAt >= 290000) {
-                clearInterval(poll);
-                setStatus("Lượt quay không phản hồi; hãy làm mới trạng thái trước khi chạy lại");
-                btn.disabled = false;
-                btn.textContent = "Quay thưởng ngay";
-                return;
-            }
-            let data;
-            const isDrawingKey = accountStorageKey(mall, accountId, "isDrawing");
-            try {
-                data = await chrome.storage.local.get([drawLogKey, isDrawingKey]);
-            } catch (error) {
-                clearInterval(poll);
-                setStatus(`Không đọc được nhật ký: ${error.message}`);
-                btn.disabled = false;
-                btn.textContent = "Quay thưởng ngay";
-                return;
-            }
-            const drawLog = data[drawLogKey];
-            if (drawLog?.length > 0) {
-                logEl.textContent = drawLog.join("\n");
-                logEl.scrollTop = logEl.scrollHeight;
-            }
-            const isDrawing = data[isDrawingKey];
-            const lastLine = drawLog?.[drawLog.length - 1] || "";
-            const isFinished = isDrawing === false ||
-                lastLine === "Done!" ||
-                lastLine.includes("Lỗi") ||
-                lastLine.includes("hết lượt") ||
-                lastLine.includes("không còn lượt quay") ||
-                lastLine === "Không tìm thấy nhân vật nào" ||
-                lastLine.startsWith("Đã tạm dừng");
-
-            if (isFinished && (Date.now() - pollStartedAt > 1500 || lastLine === "Done!" || lastLine.includes("hết lượt") || lastLine.includes("không còn lượt quay"))) {
-                clearInterval(poll);
-                btn.disabled = false;
-                btn.textContent = "Quay thưởng ngay";
-                fetchAndRender(mall).catch(() => {});
-            }
-        }, 1000);
+        fetchAndRender(mall).catch(() => {});
     });
 });
 
@@ -1987,7 +2203,9 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
     try {
         const settings = await chrome.storage.local.get([
             "autoCheckEnabled",
+            "autoCheckMode",
             "autoCheckIntervalMinutes",
+            "utcResetDay",
             "autoReloginEnabled",
             "lilithstoreUsername",
             "lilithstorePassword",
@@ -1998,6 +2216,10 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
         ]);
         applyTheme(settings.theme || "system");
         autoCheckCheckbox.checked = settings.autoCheckEnabled !== false;
+        applyAutoCheckMode(settings.autoCheckMode || "utcReset");
+        if (utcResetDaySelect && settings.utcResetDay !== undefined) {
+            utcResetDaySelect.value = String(settings.utcResetDay);
+        }
         autoCheckIntervalInput.value = Number.isSafeInteger(settings.autoCheckIntervalMinutes) &&
             settings.autoCheckIntervalMinutes >= 1
             ? String(settings.autoCheckIntervalMinutes)
@@ -2016,3 +2238,26 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
         setCharsError(error.message);
     }
 })();
+
+const drawAllBtn = document.getElementById("drawAllBtn");
+if (drawAllBtn) {
+    drawAllBtn.addEventListener("click", async () => {
+        drawAllBtn.disabled = true;
+        drawAllBtn.textContent = "Đang quay tất cả…";
+        showLog();
+        logEl.textContent = "Bắt đầu quay tuần tự tất cả tài khoản...";
+        chrome.runtime.sendMessage({ action: "drawAll" }, res => {
+            drawAllBtn.disabled = false;
+            drawAllBtn.textContent = "Quay tất cả tài khoản";
+            if (chrome.runtime.lastError) {
+                setStatus(chrome.runtime.lastError.message);
+                return;
+            }
+            if (res?.error) {
+                setStatus(res.error, false);
+                return;
+            }
+            fetchAndRender(getSelectedMall()).catch(() => {});
+        });
+    });
+}
