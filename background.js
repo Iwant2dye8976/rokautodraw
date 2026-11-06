@@ -1,3 +1,5 @@
+importScripts("utils.js");
+const ask = accountStorageKey;
 const DRAW_API = "https://plat-campaign-api.lilithgame.com";
 const activeDraws = new Set();
 const activeRelogins = new Set();
@@ -48,71 +50,31 @@ async function cleanupStaleDrawStates() {
     }
 }
 void cleanupStaleDrawStates();
-void (async () => {
-    try {
-        const mall = await getCurrentMall();
-        const data = await getStoreData(mall);
-        updateBadge(data.drawsLeft);
-    } catch {}
-})();
+void updateBadge().catch(() => {});
 const LILITH_STORE_URL = "https://passport-global.lilith.com/login?client_id=gamepay_lglo&game_id=10043&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fstore.lilith.com&app_id=2104267&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Flilith.png&client_name=LiLith+Store&redirect_to=https://store.lilith.com/rok?tab=perks&login_way=S-A&locale=vi";
 const PLUTOMALL_RELOGIN_URL = "https://passport.pup.vn/login?client_id=gamepay_lglo&game_id=10043&subject=vn_gamota&is_feature=allow_post_events&fallback_referer=https%3A%2F%2Fwww.plutomall.com.vn&app_id=6626468&client_icon=https%3A%2F%2Fstatic.farlicdn.com%2Fp%2Fgamepay%2F2.0.0%2Fexternal_app.png&client_name=%E1%BB%A8ng+d%E1%BB%A5ng+kh%C3%A1c&redirect_to=https%3A%2F%2Fwww.plutomall.com.vn%2Frok%2Fvn%3Ftab%3Dperks&login_way=S-A&locale=vi";
 const RELOGIN_ORIGINS = {
     lilithstore: "https://passport-global.lilith.com",
     plutomall: "https://passport.pup.vn",
 };
-const STORE_NAMES = {
-    lilithstore: "Lilith Store",
-    plutomall: "Plutomall",
-};
-const STORE_ORIGINS = {
-    lilithstore: { origin: "https://store.lilith.com", path: "/rok" },
-    plutomall: { origin: "https://www.plutomall.com.vn", path: "/rok/vn" },
-};
-
-const STORE_CONFIG = {
-    plutomall: {
-        pageId: "1986696212380155904",
-        componentId: "1986690045431939073",
-    },
-    lilithstore: {
-        pageId: "1986695937787461632",
-        componentId: "1986689639322648578",
-    }
-};
-
-
-function parseWebhookUrls(rawInput) {
-    if (!rawInput) return [];
-    const lines = Array.isArray(rawInput) ? rawInput : String(rawInput).split("\n");
-    return [...new Set(lines.map(u => String(u).trim()).filter(u => u.startsWith("http")))];
-}
-
-async function postSingleWebhook(webhookUrl, text) {
-    let body;
-    const headers = { "Content-Type": "application/json" };
-    if (webhookUrl.includes("discord.com/api/webhooks") || webhookUrl.includes("discordapp.com/api/webhooks")) {
-        body = JSON.stringify({ content: text });
-    } else if (webhookUrl.includes("api.telegram.org/bot")) {
-        const urlObj = new URL(webhookUrl);
-        const chatId = urlObj.searchParams.get("chat_id");
-        if (chatId) {
-            body = JSON.stringify({ chat_id: chatId, text: text });
-        } else {
-            body = JSON.stringify({ text: text });
-        }
-    } else {
-        body = JSON.stringify({ text: text, content: text });
-    }
+async function postSingleWebhook(webhookUrl, text, discordPayload = null) {
     const resp = await fetch(webhookUrl, {
         method: "POST",
-        headers,
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildWebhookBody(webhookUrl, text, discordPayload)),
     });
-    return resp.ok;
+    if (!resp.ok) {
+        let detail = "";
+        try {
+            const errData = await resp.json();
+            detail = errData?.message || errData?.description || "";
+        } catch {}
+        throw new Error(`HTTP ${resp.status}${detail ? `: ${detail}` : ""}`);
+    }
+    return true;
 }
 
-async function sendWebhookMessage(text) {
+async function sendWebhookMessage(text, discordPayload = null) {
     try {
         const { webhookEnabled, webhookUrl } = await chrome.storage.local.get([
             "webhookEnabled",
@@ -122,7 +84,7 @@ async function sendWebhookMessage(text) {
         const urls = parseWebhookUrls(webhookUrl);
         if (urls.length === 0) return false;
 
-        const results = await Promise.allSettled(urls.map(url => postSingleWebhook(url, text)));
+        const results = await Promise.allSettled(urls.map(url => postSingleWebhook(url, text, discordPayload)));
         return results.some(r => r.status === "fulfilled" && r.value === true);
     } catch (e) {
         console.warn("[LilithDraw] Webhook send failed:", e);
@@ -140,13 +102,8 @@ const REWARDS = {
     "1986631205541543936": "2.000 Đá Quý"
 };
 
-
 function sk(mall, name) {
     return `${mall}_${name}`;
-}
-
-function ask(mall, accountId, name) {
-    return accountId ? `${mall}_account_${accountId}_${name}` : sk(mall, name);
 }
 
 async function getStoreAccounts(mall) {
@@ -225,36 +182,6 @@ async function continueReloginSequence(expectedMall, expectedAccountId, failure)
     }
 }
 
-function isJwtExpired(token) {
-    if (!token || typeof token !== "string") return false;
-    try {
-        const clean = token.replace(/^Bearer\s+/i, "").trim();
-        const parts = clean.split(".");
-        if (parts.length < 2) return false;
-        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-        const jsonStr = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
-        const payload = JSON.parse(jsonStr);
-        if (typeof payload?.exp === "number") {
-            return Math.floor(Date.now() / 1000) >= payload.exp;
-        }
-    } catch {
-        // parsing failed or not a standard JWT
-    }
-    return false;
-}
-
-function isExpiredTokenResponse(json, url) {
-    const rawCode = json?.code ?? json?.ret ?? json?.status;
-    if (rawCode !== undefined && rawCode !== null) {
-        const code = Number(rawCode);
-        if (code === 401 || code === 403 || code === 1001 || code === 1002 || code === 20004 || code === 20005) return true;
-    }
-    const message = `${json?.msg ?? ""} ${json?.message ?? ""}`.toLowerCase();
-    const hasExpiredTokenMessage =
-        /token.{0,30}(expired|invalid|timeout|过期|失效|无效)|(?:expired|invalid|timeout|过期|失效|无效).{0,30}token|unauthori[sz]ed|not\s*login|user\s*not\s*login|session\s*expired|login\s*expired|auth\s*fail/i.test(message);
-    return hasExpiredTokenMessage;
-}
-
 async function getCurrentMall() {
     const { currentMall } = await chrome.storage.local.get("currentMall");
     return currentMall || "plutomall";
@@ -282,11 +209,15 @@ async function getStoreData(mall, accountId) {
     };
 }
 
-function updateBadge(drawsLeft) {
+// Badge always reflects the account selected in the popup, not whichever account ran last.
+async function updateBadge() {
+    const { currentMall = "plutomall", activeAccountIds = {} } =
+        await chrome.storage.local.get(["currentMall", "activeAccountIds"]);
+    const { drawsLeft } = await getStoreData(currentMall, activeAccountIds[currentMall] || undefined);
     const count = Number(drawsLeft);
     const text = Number.isFinite(count) && count > 0 ? String(count) : "";
-    void chrome.action.setBadgeText({ text });
-    if (text) void chrome.action.setBadgeBackgroundColor({ color: "#cc785c" });
+    await chrome.action.setBadgeText({ text });
+    if (text) await chrome.action.setBadgeBackgroundColor({ color: "#cc785c" });
 }
 
 async function setStoreData(mall, partial, accountId) {
@@ -296,7 +227,7 @@ async function setStoreData(mall, partial, accountId) {
     }
     await chrome.storage.local.set(mapped);
     if (partial.drawsLeft !== undefined) {
-        updateBadge(partial.drawsLeft);
+        void updateBadge().catch(() => {});
     }
 }
 
@@ -346,7 +277,7 @@ async function fetchJson(url, options = {}, accountId, retries = 1) {
             error.status = response.status;
             throw error;
         }
-        if (response.ok && isExpiredTokenResponse(json, url)) {
+        if (response.ok && isExpiredTokenResponse(json)) {
             const mall = detectMallFromUrl(url);
             if (mall) {
                 void setStoreData(mall, { isValidToken: false }, accountId);
@@ -613,46 +544,6 @@ chrome.webRequest.onSendHeaders.addListener(
 
 const UTC_RESET_ALARM = "utcResetCheck";
 
-function getNextUtcResetTime(targetDay = "5") {
-    const now = new Date();
-    const target = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0, 5, 0, 0
-    ));
-
-    if (targetDay === "everyday" || targetDay === "daily") {
-        if (target.getTime() <= now.getTime()) {
-            target.setUTCDate(target.getUTCDate() + 1);
-        }
-        return target.getTime();
-    }
-
-    const dayNum = Number(targetDay);
-    let daysToAdd = (dayNum - now.getUTCDay() + 7) % 7;
-    if (daysToAdd === 0 && target.getTime() <= now.getTime()) {
-        daysToAdd = 7;
-    }
-    target.setUTCDate(target.getUTCDate() + daysToAdd);
-    return target.getTime();
-}
-
-function getTodayUtcDateString(d = new Date()) {
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
-}
-
-function isUtcResetMissed(now, targetDay = "5", lastCheckedDate) {
-    const todayStr = getTodayUtcDateString(now);
-    if (lastCheckedDate === todayStr) return false;
-
-    const isTodayResetDay = targetDay === "everyday" || targetDay === "daily" || now.getUTCDay() === Number(targetDay);
-    if (!isTodayResetDay) return false;
-
-    const targetToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 5, 0, 0);
-    return now.getTime() >= targetToday;
-}
-
 async function checkAndCatchUpUtcReset() {
     try {
         const { autoCheckEnabled, autoCheckMode, utcResetDay = "5", lastUtcResetDate } = await chrome.storage.local.get([
@@ -787,6 +678,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local") {
+        if (changes.currentMall || changes.activeAccountIds) {
+            void updateBadge().catch(() => {});
+        }
         if (
             changes.autoCheckEnabled ||
             changes.autoCheckMode ||
@@ -878,15 +772,6 @@ async function refreshStoreAfterRelogin(mall, accountId) {
         activeReloginRefreshes.delete(autoReloginTabId);
         await continueReloginSequence(mall, accountId, refreshError);
     }
-}
-
-function isReloginStoreUrl(url, mall) {
-    const store = STORE_ORIGINS[mall];
-    return Boolean(
-        store &&
-        url.origin === store.origin &&
-        url.pathname.startsWith(store.path)
-    );
 }
 
 async function markReloginReadyWithoutAccountSwitch(mall, startedAt) {
@@ -1076,7 +961,8 @@ async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
     const expiredQueue = [];
     for (const mall of Object.keys(STORE_CONFIG)) {
         const accounts = await getStoreAccounts(mall);
-        const profiles = accounts.length > 0 ? accounts : [{ id: "legacy" }];
+        // No saved accounts: popup and token capture use the unprefixed keys, so must we.
+        const profiles = accounts.length > 0 ? accounts : [{ id: undefined }];
         for (const account of profiles) {
             const accountId = account.id;
             try {
@@ -1145,7 +1031,7 @@ async function autoDrawMall(mall, trigger, accountId) {
             });
             return;
         }
-        const log = await runDraws(token, mall, true, accountId, async currentLog => {
+        const log = await runDraws(token, mall, false, accountId, async currentLog => {
             await chrome.storage.local.set({
                 [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...currentLog],
             });
@@ -1240,79 +1126,23 @@ async function getManifest(token, role, mall, accountId) {
     );
 }
 
-function getRoleDrawCount(manifest, mall) {
-    const componentId = STORE_CONFIG[mall]?.componentId;
-    if (!componentId || !manifest || typeof manifest !== "object") {
-        throw new Error(`Không tìm thấy manifest hợp lệ cho ${STORE_NAMES[mall]}`);
-    }
-
-    const counters = [];
-    const visited = new WeakSet();
-    const visit = value => {
-        if (!value || typeof value !== "object" || visited.has(value)) return;
-        visited.add(value);
-
-        if (
-            value.params &&
-            typeof value.params === "object" &&
-            Object.prototype.hasOwnProperty.call(value.params, "curDrawTimes")
-        ) {
-            const identifiers = [
-                value.componentId,
-                value.component_id,
-                value.componentID,
-                value.id,
-                value.cid,
-            ].filter(identifier => identifier !== undefined && identifier !== null)
-                .map(String);
-            counters.push({
-                rawCount: value.params.curDrawTimes,
-                matchesComponent: identifiers.includes(componentId),
-            });
-        }
-
-        for (const child of Object.values(value)) visit(child);
-    };
-    visit(manifest);
-
-    const matchingCounters = counters.filter(counter => counter.matchesComponent);
-    const candidates = matchingCounters.length > 0
-        ? matchingCounters
-        : counters.length === 1 ? counters : [];
-    if (candidates.length !== 1) {
-        throw new Error(
-            `Không xác định được bộ đếm lượt quay của ${STORE_NAMES[mall]} trong manifest`
-        );
-    }
-
-    const rawCount = candidates[0].rawCount;
-    if (typeof rawCount === "string" && rawCount.trim() === "") {
-        throw new Error(`Bộ đếm lượt quay của ${STORE_NAMES[mall]} không hợp lệ`);
-    }
-    const count = Number(rawCount);
-    if (!Number.isSafeInteger(count) || count < 0) {
-        throw new Error(`Bộ đếm lượt quay của ${STORE_NAMES[mall]} không hợp lệ`);
-    }
-    return count;
-}
-
 async function getTotalDrawsLeft(token, roles, mall, accountId) {
     if (!Array.isArray(roles) || roles.length === 0) {
         const lastCheck = new Date().toLocaleString();
         await setStoreData(mall, { drawsLeft: 0, lastCheck }, accountId);
         return 0;
     }
-    // Lượt quay là dùng chung cho toàn bộ tài khoản (account-wide quota pool).
-    // Chỉ cần kiểm tra manifest của nhân vật đầu tiên thành công.
     let total = 0;
-    for (const role of roles) {
-        try {
-            const manifest = await getManifest(token, role, mall, accountId);
-            total = getRoleDrawCount(manifest, mall);
-            break;
-        } catch (e) {
-            console.warn(`[LilithDraw][${mall}] Error getting draw count for role ${role.roleId}:`, e);
-        }
+    // shortcut: 3 parallel manifest requests, lower it if the API starts returning HTTP 429.
+    for (let i = 0; i < roles.length; i += 3) {
+        await Promise.all(roles.slice(i, i + 3).map(async role => {
+            try {
+                const manifest = await getManifest(token, role, mall, accountId);
+                total += getRoleDrawCount(manifest, mall);
+            } catch (e) {
+                console.warn(`[LilithDraw][${mall}] Error getting draw count for role ${role.roleId}:`, e);
+            }
+        }));
     }
     const lastCheck = new Date().toLocaleString();
     await setStoreData(mall, { drawsLeft: total, lastCheck }, accountId);
@@ -1354,6 +1184,8 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     const maxRuntimeMs = 4 * 60 * 1000;
     const log = [];
     const sessionRewards = {};
+    const sessionRewardIcons = {};
+    const roleRewards = new Map();
     const flushSessionRewards = async () => {
         if (Object.keys(sessionRewards).length === 0) return;
         try {
@@ -1415,10 +1247,8 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
         console.warn("[LilithDraw] Could not sort roles by favorite:", err);
     }
 
-    let isOutOfResources = false;
-
+    let remaining = 0;
     for (const role of roles) {
-        if (isOutOfResources) break;
         if (Date.now() - startedAt >= maxRuntimeMs) {
             log.push("Đã tạm dừng để tránh quá thời gian chạy; có thể bấm quay lại để tiếp tục.");
             await flushSessionRewards();
@@ -1427,11 +1257,13 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
         }
         try {
             const manifest = await getManifest(token, role, mall, accountId);
+            Object.assign(sessionRewardIcons, getRewardIcons(manifest));
             let drawCount = getRoleDrawCount(manifest, mall);
             if (drawCount > 0) {
-                while (drawCount > 0 && !isOutOfResources) {
+                while (drawCount > 0) {
                     if (Date.now() - startedAt >= maxRuntimeMs) {
                         log.push("Đã tạm dừng để tránh quá thời gian chạy; có thể bấm quay lại để tiếp tục.");
+                        await flushSessionRewards();
                         await reportProgress();
                         return log;
                     }
@@ -1441,8 +1273,14 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                         const reward = REWARDS[rewardId] || result?.data?.reward ||
                             (rewardId ? `Phần thưởng ${rewardId}` : null);
                         if (!reward) throw new Error(result?.msg || "Phản hồi quay thưởng thiếu thông tin phần thưởng");
+                        if (rewardId && sessionRewardIcons[rewardId] && !sessionRewardIcons[reward]) {
+                            sessionRewardIcons[reward] = sessionRewardIcons[rewardId];
+                        }
                         log.push(`[${role.name}] x1 ${reward}`);
                         sessionRewards[reward] = (sessionRewards[reward] || 0) + 1;
+                        if (!roleRewards.has(role)) roleRewards.set(role, {});
+                        const roleCounts = roleRewards.get(role);
+                        roleCounts[reward] = (roleCounts[reward] || 0) + 1;
                         drawCount--;
                         await reportProgress();
 
@@ -1465,39 +1303,31 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                         if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
                             log.push(`[${role.name}] Đã hết lượt quay (${errMsg})`);
                             await reportProgress();
-                            isOutOfResources = true;
                             drawCount = 0;
-                            await setStoreData(mall, { drawsLeft: 0, lastCheck: new Date().toLocaleString() }, accountId);
                             break;
                         } else if (drawErr.status === 401 || drawErr.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
                             log.push(`[${role.name}] Token đã hết hạn, dừng quay: ${errMsg}`);
+                            await flushSessionRewards();
                             await reportProgress();
-                            isOutOfResources = true;
                             return log;
                         } else {
                             throw drawErr;
                         }
                     }
                 }
-                if (drawCount === 0) {
-                    isOutOfResources = true;
-                    break;
-                }
             } else {
                 log.push(`[${role.name}] Không còn lượt quay nào`);
                 await reportProgress();
-                isOutOfResources = true;
-                break;
             }
+            remaining += drawCount;
         } catch (e) {
             const errMsg = e.message || "";
             if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
                 log.push(`[${role.name}] Đã hết lượt quay (${errMsg})`);
                 await reportProgress();
-                isOutOfResources = true;
-                await setStoreData(mall, { drawsLeft: 0, lastCheck: new Date().toLocaleString() }, accountId);
             } else if (e.status === 401 || e.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
                 log.push(`[${role.name}] Token đã hết hạn, dừng quay: ${errMsg}`);
+                await flushSessionRewards();
                 await reportProgress();
                 return log;
             } else {
@@ -1505,17 +1335,30 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                 await reportProgress();
             }
         }
-        await new Promise(r => setTimeout(r, 500));
+        // Gửi webhook thông báo ngay sau khi nhân vật quay xong (nếu có trúng thưởng)
+        const charRewards = roleRewards.get(role);
+        if (charRewards && Object.keys(charRewards).length > 0) {
+            const storeName = STORE_NAMES[mall] || mall;
+            const wonCount = Object.values(charRewards).reduce((a, b) => a + b, 0);
+            const lines = Object.entries(charRewards).map(([name, count]) => {
+                const icon = sessionRewardIcons[name];
+                return icon ? `  x${count} ${name}: ${icon}` : `  x${count} ${name}`;
+            }).join("\n");
+            const avatar = role.avatar ? `\n  Avatar: ${role.avatar}` : "";
+            const notifyText = `🎲 [${storeName}] Hoàn tất ${wonCount} lượt quay cho [${role.name}]!${avatar}\n${lines}`;
+            const discordPayload = {
+                username: "Lucky Draw Bot",
+                content: `🎲 [${storeName}] Hoàn tất ${wonCount} lượt quay cho **${role.name}**!`,
+                embeds: [buildSingleDiscordRewardEmbed(storeName, role, charRewards, sessionRewardIcons)],
+            };
+            void sendWebhookMessage(notifyText, discordPayload);
+            await new Promise(r => setTimeout(r, 500));
+        }
     }
 
-    // Sau khi quay xong toàn bộ (hoặc dừng do hết lượt):
-    // Cập nhật lại số lượt quay chính xác vào storage
+    // Draws left = what each role still had after its loop; avoids re-fetching every manifest.
     try {
-        if (isOutOfResources) {
-            await setStoreData(mall, { drawsLeft: 0, lastCheck: new Date().toLocaleString() }, accountId);
-        } else {
-            await getTotalDrawsLeft(token, roles, mall, accountId);
-        }
+        await setStoreData(mall, { drawsLeft: remaining, lastCheck: new Date().toLocaleString() }, accountId);
     } catch (e) {
         console.warn("[LilithDraw] Could not refresh drawsLeft after runDraws:", e);
     }
@@ -1523,12 +1366,6 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     await flushSessionRewards();
     log.push("Done!");
     await reportProgress();
-    const wonItems = log.filter(line => line.includes("] x1 "));
-    if (wonItems.length > 0) {
-        const storeName = STORE_CONFIG[mall]?.name || mall;
-        const notifyText = `🎲 [${storeName}] Hoàn tất ${wonItems.length} lượt quay!\n${wonItems.join("\n")}`;
-        void sendWebhookMessage(notifyText);
-    }
     return log;
 }
 
@@ -1770,6 +1607,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     : `Đăng nhập ${STORE_NAMES[autoReloginMall]} thất bại: ${String(msg.error || "Lỗi không xác định")}`,
             });
             if (!msg.success) {
+                void chrome.notifications.create({
+                    type: "basic",
+                    iconUrl: "images/icons/icon48.png",
+                    title: `Đăng nhập ${STORE_NAMES[autoReloginMall]} thất bại`,
+                    message: String(msg.error || "Lỗi không xác định"),
+                }).catch(() => {});
                 await chrome.storage.session.remove([
                     "autoReloginWindowId",
                     "autoReloginTabId",
@@ -1870,11 +1713,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 urls.map(u => postSingleWebhook(u, msg.text || "🔔 [ROK Auto] Kiểm tra kết nối Webhook thành công!"))
             );
             const successCount = results.filter(r => r.status === "fulfilled" && r.value === true).length;
+            const failure = results.find(r => r.status === "rejected")?.reason?.message;
             sendResponse({
                 ok: successCount > 0,
                 successCount,
                 totalCount: urls.length,
-                error: successCount === 0 ? "Tất cả webhook đều gửi thất bại." : undefined
+                error: successCount === 0 ? (failure || "Tất cả webhook đều gửi thất bại.") : undefined
             });
         })().catch(error => sendResponse({ ok: false, error: error.message }));
         return true;
@@ -1987,7 +1831,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 type: "basic",
                 iconUrl: "images/icons/icon48.png",
                 title: "Auto Survey",
-                message: `Message: ${json?.msg ?? "Không có thông báo"}, Code: ${json?.ret ?? "-"}`,
+                message: `Message: ${json?.msg ?? "Thành công"}, Code: ${json?.ret ?? "-"}`,
                 requireInteraction: false
             });
             sendResponse({ ok: true });

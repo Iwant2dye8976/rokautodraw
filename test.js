@@ -1,24 +1,28 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const {
+    STORE_CONFIG,
+    STORE_NAMES,
+    isReloginStoreUrl,
+    accountStorageKey,
+    getJwtExp,
+    isJwtExpired,
+    isExpiredTokenResponse,
+    parseWebhookUrls,
+    buildWebhookBody,
+    getRewardIcons,
+    buildSingleDiscordRewardEmbed,
+    getRoleDrawCount,
+    getNextUtcResetTime,
+    getTodayUtcDateString,
+    isUtcResetMissed,
+    normalizeSearchText,
+    matchesSearch,
+    toCsv,
+} = require("./utils.js");
 
-// --- 1. isJwtExpired ---
-function isJwtExpired(token) {
-    if (!token || typeof token !== "string") return false;
-    try {
-        const clean = token.replace(/^Bearer\s+/i, "").trim();
-        const parts = clean.split(".");
-        if (parts.length < 2) return false;
-        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-        const jsonStr = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
-        const payload = JSON.parse(jsonStr);
-        if (typeof payload?.exp === "number") {
-            return Math.floor(Date.now() / 1000) >= payload.exp;
-        }
-    } catch {}
-    return false;
-}
-
-test("isJwtExpired correctly identifies valid and expired tokens", () => {
+// --- 1. isJwtExpired & getJwtExp ---
+test("isJwtExpired and getJwtExp correctly identify valid and expired tokens", () => {
     const futureExp = Math.floor(Date.now() / 1000) + 3600;
     const pastExp = Math.floor(Date.now() / 1000) - 3600;
     const makeJwt = exp => `header.${btoa(JSON.stringify({ exp, client_id: "event_lglo" }))}.sig`;
@@ -29,65 +33,48 @@ test("isJwtExpired correctly identifies valid and expired tokens", () => {
     assert.equal(isJwtExpired("invalid.token"), false, "Malformed token should not throw");
     assert.equal(isJwtExpired(""), false, "Empty string should not throw");
     assert.equal(isJwtExpired(null), false, "Null token should not throw");
+
+    assert.equal(getJwtExp(makeJwt(futureExp)), futureExp);
+    assert.equal(getJwtExp("not.a.jwt"), null);
 });
 
 // --- 2. isExpiredTokenResponse ---
-function isExpiredTokenResponse(json, url) {
-    const rawCode = json?.code ?? json?.ret ?? json?.status;
-    if (rawCode !== undefined && rawCode !== null) {
-        const code = Number(rawCode);
-        if (code === 401 || code === 403 || code === 1001 || code === 1002 || code === 20004 || code === 20005) return true;
-    }
-    const message = `${json?.msg ?? ""} ${json?.message ?? ""}`.toLowerCase();
-    const hasExpiredTokenMessage =
-        /token.{0,30}(expired|invalid|timeout|过期|失效|无效)|(?:expired|invalid|timeout|过期|失效|无效).{0,30}token|unauthori[sz]ed|not\s*login|user\s*not\s*login|session\s*expired|login\s*expired|auth\s*fail/i.test(message);
-    return hasExpiredTokenMessage;
-}
-
 test("isExpiredTokenResponse detects expired codes without looping on empty roles", () => {
     assert.equal(isExpiredTokenResponse({ code: 1002, msg: "token expired" }), true);
     assert.equal(isExpiredTokenResponse({ code: 401 }), true);
     assert.equal(isExpiredTokenResponse({ code: 0, msg: "ok" }), false);
-    // Crucial regression test for Finding 4: empty user-roles list must NOT be treated as expired token
+    // Regression test: empty user-roles list must NOT be treated as expired token
     const emptyRolesResponse = { code: 0, msg: "ok", data: { list: [] } };
     assert.equal(
-        isExpiredTokenResponse(emptyRolesResponse, "https://plat-campaign-api.lilithgame.com/page/123/user-roles"),
+        isExpiredTokenResponse(emptyRolesResponse),
         false,
         "Empty user-roles list should not trigger token expiration"
     );
 });
 
-// --- 3. getRoleDrawCount ---
-function getRoleDrawCount(manifest, componentId) {
-    if (!componentId || !manifest || typeof manifest !== "object") {
-        throw new Error("Invalid manifest");
-    }
-    const counters = [];
-    const visited = new WeakSet();
-    const visit = value => {
-        if (!value || typeof value !== "object" || visited.has(value)) return;
-        visited.add(value);
-        if (value.params && typeof value.params === "object" && Object.prototype.hasOwnProperty.call(value.params, "curDrawTimes")) {
-            const identifiers = [value.componentId, value.component_id, value.componentID, value.id, value.cid]
-                .filter(id => id !== undefined && id !== null)
-                .map(String);
-            counters.push({
-                rawCount: value.params.curDrawTimes,
-                matchesComponent: identifiers.includes(componentId),
-            });
-        }
-        for (const child of Object.values(value)) visit(child);
-    };
-    visit(manifest);
+// --- 3. isReloginStoreUrl ---
+test("isReloginStoreUrl handles both plutomall domain variants and lilithstore", () => {
+    assert.equal(isReloginStoreUrl(new URL("https://www.plutomall.com.vn/rok/vn?tab=perks"), "plutomall"), true);
+    assert.equal(isReloginStoreUrl(new URL("https://plutomall.com/rok/perks"), "plutomall"), true);
+    assert.equal(isReloginStoreUrl(new URL("https://www.plutomall.com/rok/perks"), "plutomall"), true);
+    assert.equal(isReloginStoreUrl(new URL("https://store.lilith.com/rok?tab=perks"), "lilithstore"), true);
 
-    const matching = counters.filter(c => c.matchesComponent);
-    const candidate = matching.length > 0 ? matching[0] : (counters.length === 1 ? counters[0] : null);
-    if (!candidate) throw new Error("Counter not found");
-    return Number(candidate.rawCount);
-}
+    // Rejections
+    assert.equal(isReloginStoreUrl(new URL("http://store.lilith.com/rok"), "lilithstore"), false, "Must be https");
+    assert.equal(isReloginStoreUrl(new URL("https://fakeplutomall.com/rok"), "plutomall"), false, "Reject spoofed host");
+    assert.equal(isReloginStoreUrl(new URL("https://store.lilith.com/other"), "lilithstore"), false, "Must start with /rok");
+});
 
-test("getRoleDrawCount extracts draw count from nested manifest", () => {
-    const compId = "1986690045431939073";
+// --- 4. accountStorageKey ---
+test("accountStorageKey generates prefixed and legacy keys correctly", () => {
+    assert.equal(accountStorageKey("plutomall", "acc1", "token"), "plutomall_account_acc1_token");
+    assert.equal(accountStorageKey("plutomall", "", "token"), "plutomall_token");
+    assert.equal(accountStorageKey("lilithstore", undefined, "drawLog"), "lilithstore_drawLog");
+});
+
+// --- 5. getRoleDrawCount ---
+test("getRoleDrawCount extracts draw count from nested manifest using STORE_CONFIG", () => {
+    const compId = STORE_CONFIG.plutomall.componentId;
     const manifest = {
         data: {
             modules: [
@@ -98,31 +85,10 @@ test("getRoleDrawCount extracts draw count from nested manifest", () => {
             ]
         }
     };
-    assert.equal(getRoleDrawCount(manifest, compId), 3);
+    assert.equal(getRoleDrawCount(manifest, "plutomall"), 3);
 });
 
-// --- 4. normalizeSearchText & matchesSearch ---
-function normalizeSearchText(str) {
-    return String(str ?? "")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/đ/g, "d")
-        .replace(/Đ/g, "D");
-}
-
-function matchesSearch(role, rawQuery) {
-    const q = rawQuery.trim().toLowerCase();
-    if (!q) return true;
-    const qNorm = normalizeSearchText(q);
-    const name = String(role.name ?? "").toLowerCase();
-    const id = String(role.roleId ?? "").toLowerCase();
-    const svr = String(role.svrId ?? "").toLowerCase();
-    return name.includes(q) || id.includes(q) || svr.includes(q) ||
-           normalizeSearchText(name).includes(qNorm) ||
-           normalizeSearchText(svr).includes(qNorm);
-}
-
+// --- 6. normalizeSearchText & matchesSearch ---
 test("matchesSearch handles Vietnamese names and server IDs", () => {
     const role = { name: "Chiến Thần Độc Cô", roleId: "12345678", svrId: "1055" };
     assert.equal(matchesSearch(role, "chien"), true, "Diacritics insensitive");
@@ -131,7 +97,7 @@ test("matchesSearch handles Vietnamese names and server IDs", () => {
     assert.equal(matchesSearch(role, "9999"), false, "Non-matching query");
 });
 
-// --- 5. Multi-mall relogin queue progression ---
+// --- 7. Multi-mall relogin queue progression ---
 function progressQueue(queue, currentIndex, expectedMall, expectedAccountId, failure) {
     if (!Array.isArray(queue) || !queue[currentIndex]) return null;
     const current = queue[currentIndex];
@@ -159,7 +125,7 @@ test("relogin queue advances sequentially across multiple stores", () => {
     assert.equal(step2.finished, true);
 });
 
-// --- 6. Export storeAccounts password stripping & validation ---
+// --- 8. Export storeAccounts password stripping & validation ---
 function stripStoreAccountsPasswords(storeAccounts) {
     if (!storeAccounts || typeof storeAccounts !== "object") return storeAccounts;
     const stripped = {};
@@ -201,43 +167,7 @@ test("stripStoreAccountsPasswords removes plaintext passwords and passes validat
     assert.equal(validateStoreAccounts(exported), true, "Stripped accounts must pass schema validator");
 });
 
-// --- 7. getNextUtcResetTime & isUtcResetMissed ---
-function getNextUtcResetTime(targetDay = "5", referenceTime = Date.now()) {
-    const now = new Date(referenceTime);
-    const target = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0, 5, 0, 0
-    ));
-
-    if (targetDay === "everyday" || targetDay === "daily") {
-        if (target.getTime() <= now.getTime()) {
-            target.setUTCDate(target.getUTCDate() + 1);
-        }
-        return target.getTime();
-    }
-
-    const dayNum = Number(targetDay);
-    let daysToAdd = (dayNum - now.getUTCDay() + 7) % 7;
-    if (daysToAdd === 0 && target.getTime() <= now.getTime()) {
-        daysToAdd = 7;
-    }
-    target.setUTCDate(target.getUTCDate() + daysToAdd);
-    return target.getTime();
-}
-
-function isUtcResetMissed(now, targetDay = "5", lastCheckedDate) {
-    const todayStr = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString().slice(0, 10);
-    if (lastCheckedDate === todayStr) return false;
-
-    const isTodayResetDay = targetDay === "everyday" || targetDay === "daily" || now.getUTCDay() === Number(targetDay);
-    if (!isTodayResetDay) return false;
-
-    const targetToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 5, 0, 0);
-    return now.getTime() >= targetToday;
-}
-
+// --- 9. getNextUtcResetTime & isUtcResetMissed ---
 test("getNextUtcResetTime targets Friday 00:05 UTC correctly", () => {
     // 2026-10-27 is a Tuesday (UTCDay = 2)
     const tuesday = Date.UTC(2026, 9, 27, 8, 30, 0);
@@ -275,54 +205,38 @@ test("isUtcResetMissed detects missed runs when opening browser late on reset da
     assert.equal(isUtcResetMissed(fridayBefore, "5", "2026-10-23"), false, "Before 00:05 UTC, not yet missed");
 });
 
-// --- 8. CSV formatting ---
-function formatCsv(rows) {
-    return "\uFEFF" + rows
-        .map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
-        .join("\r\n");
-}
-
-test("formatCsv handles special characters, commas, quotes and UTF-8 BOM", () => {
+// --- 10. toCsv ---
+test("toCsv handles special characters, commas, quotes and UTF-8 BOM", () => {
     const rows = [
         ["Tên", "Mô tả", "Số lượng"],
         ["Đá Quý", 'Rương "Đặc Biệt", vip 10', 500],
     ];
-    const csv = formatCsv(rows);
+    const csv = toCsv(rows);
     assert.equal(csv.startsWith("\uFEFF"), true, "Must include BOM for Excel Vietnamese display");
     assert.equal(csv.includes('"Rương ""Đặc Biệt"", vip 10"'), true, "Quotes and commas properly escaped");
 });
 
-// --- 9. Webhook payload formatting ---
-function formatWebhookPayload(webhookUrl, text) {
-    let body;
-    if (webhookUrl.includes("discord.com/api/webhooks") || webhookUrl.includes("discordapp.com/api/webhooks")) {
-        body = { content: text };
-    } else if (webhookUrl.includes("api.telegram.org/bot")) {
-        const urlObj = new URL(webhookUrl);
-        const chatId = urlObj.searchParams.get("chat_id");
-        body = chatId ? { chat_id: chatId, text } : { text };
-    } else {
-        body = { text, content: text };
-    }
-    return body;
-}
-
-test("formatWebhookPayload shapes Discord and Telegram payloads correctly", () => {
+// --- 11. buildWebhookBody ---
+test("buildWebhookBody shapes Discord and Telegram payloads correctly", () => {
     const discordUrl = "https://discord.com/api/webhooks/123/xyz";
     const telegramUrl = "https://api.telegram.org/bot12345:TOKEN/sendMessage?chat_id=98765";
     const genericUrl = "https://hooks.slack.com/services/custom";
 
-    const dPayload = formatWebhookPayload(discordUrl, "Hello Discord");
+    const dPayload = buildWebhookBody(discordUrl, "Hello Discord");
     assert.deepEqual(dPayload, { content: "Hello Discord" });
 
-    const tPayload = formatWebhookPayload(telegramUrl, "Hello Telegram");
+    const customEmbedPayload = { content: "Title", embeds: [{ title: "Embed 1" }] };
+    const dCustomPayload = buildWebhookBody(discordUrl, "Hello Discord", customEmbedPayload);
+    assert.deepEqual(dCustomPayload, customEmbedPayload);
+
+    const tPayload = buildWebhookBody(telegramUrl, "Hello Telegram", customEmbedPayload);
     assert.deepEqual(tPayload, { chat_id: "98765", text: "Hello Telegram" });
 
-    const gPayload = formatWebhookPayload(genericUrl, "Hello Slack");
+    const gPayload = buildWebhookBody(genericUrl, "Hello Slack", customEmbedPayload);
     assert.deepEqual(gPayload, { text: "Hello Slack", content: "Hello Slack" });
 });
 
-// --- 10. CONFIG_SETTING_VALIDATORS for new settings ---
+// --- 12. CONFIG_SETTING_VALIDATORS ---
 const validators = {
     utcResetSyncEnabled: value => typeof value === "boolean",
     webhookEnabled: value => typeof value === "boolean",
@@ -340,13 +254,7 @@ test("validators correctly check new settings", () => {
     assert.equal(validators.rewardTotals([1, 2, 3]), false);
 });
 
-// --- 11. parseWebhookUrls multi-webhook parser ---
-function parseWebhookUrls(rawInput) {
-    if (!rawInput) return [];
-    const lines = Array.isArray(rawInput) ? rawInput : String(rawInput).split("\n");
-    return [...new Set(lines.map(u => String(u).trim()).filter(u => u.startsWith("http")))];
-}
-
+// --- 13. parseWebhookUrls ---
 test("parseWebhookUrls handles multiple line-separated URLs, whitespace and invalid lines", () => {
     const raw = `
         https://discord.com/api/webhooks/1/aaa   
@@ -363,7 +271,7 @@ test("parseWebhookUrls handles multiple line-separated URLs, whitespace and inva
     assert.deepEqual(parseWebhookUrls(null), []);
 });
 
-// --- 12. safeRewardTotals null guard ---
+// --- 14. mergeRewardTotals ---
 function mergeRewardTotals(existing, sessionRewards) {
     const totals = existing || {};
     for (const [name, count] of Object.entries(sessionRewards)) {
@@ -384,7 +292,7 @@ test("mergeRewardTotals handles null and undefined existing storage without thro
     assert.equal(resExisting["Tăng tốc 3 giờ"], 1);
 });
 
-// --- 13. buildExportSettings includes webhookUrl when webhookEnabled ---
+// --- 15. buildExportSettings ---
 function buildExportSettings(selectedKeys, storedSettings, currentSettings) {
     const storageKeys = selectedKeys.slice();
     if (selectedKeys.includes("webhookEnabled") && !storageKeys.includes("webhookUrl")) {
@@ -430,7 +338,7 @@ test("buildExportSettings bundles utcResetDay when autoCheckMode is selected", (
     assert.equal(exported.utcResetDay, "5");
 });
 
-// --- 14. autoCheckMode validator and alarm sync logic ---
+// --- 16. autoCheckMode validator and alarm sync logic ---
 const autoCheckValidators = {
     autoCheckMode: value => typeof value === "string" && ["utcReset", "interval"].includes(value),
 };
@@ -447,40 +355,36 @@ test("autoCheckMode validator validates correct modes and rejects invalid values
 
 function simulateSyncAutoCheckAlarms({ enabled, mode, intervalMinutes, utcResetDay }) {
     const alarms = new Map();
-    // Simulate syncAutoCheckAlarms:
     if (!enabled) {
         alarms.delete("dailyResetCheck");
-        alarms.delete("utc_reset_alarm");
+        alarms.delete("utcResetCheck");
         return { alarms, activeMode: "none" };
     }
 
     if (mode === "utcReset") {
         alarms.delete("dailyResetCheck");
         const periodInMinutes = (utcResetDay === "everyday" || utcResetDay === "daily") ? 24 * 60 : 7 * 24 * 60;
-        alarms.set("utc_reset_alarm", { periodInMinutes });
+        alarms.set("utcResetCheck", { periodInMinutes });
         return { alarms, activeMode: "utcReset" };
     } else {
-        alarms.delete("utc_reset_alarm");
+        alarms.delete("utcResetCheck");
         alarms.set("dailyResetCheck", { periodInMinutes: intervalMinutes || 60 });
         return { alarms, activeMode: "interval" };
     }
 }
 
 test("syncAutoCheckAlarms enforces mutual exclusion between UTC and interval alarms", () => {
-    // 1. Master toggle OFF -> both alarms disabled
     const disabled = simulateSyncAutoCheckAlarms({ enabled: false, mode: "utcReset" });
     assert.equal(disabled.alarms.size, 0, "No alarms when master switch is off");
 
-    // 2. UTC Reset mode -> only utc_reset_alarm active
     const utcMode = simulateSyncAutoCheckAlarms({ enabled: true, mode: "utcReset", utcResetDay: "5" });
-    assert.equal(utcMode.alarms.has("utc_reset_alarm"), true);
+    assert.equal(utcMode.alarms.has("utcResetCheck"), true);
     assert.equal(utcMode.alarms.has("dailyResetCheck"), false);
-    assert.equal(utcMode.alarms.get("utc_reset_alarm").periodInMinutes, 7 * 24 * 60);
+    assert.equal(utcMode.alarms.get("utcResetCheck").periodInMinutes, 7 * 24 * 60);
 
-    // 3. Interval mode -> only dailyResetCheck active
     const intervalMode = simulateSyncAutoCheckAlarms({ enabled: true, mode: "interval", intervalMinutes: 120 });
     assert.equal(intervalMode.alarms.has("dailyResetCheck"), true);
-    assert.equal(intervalMode.alarms.has("utc_reset_alarm"), false);
+    assert.equal(intervalMode.alarms.has("utcResetCheck"), false);
     assert.equal(intervalMode.alarms.get("dailyResetCheck").periodInMinutes, 120);
 });
 
@@ -492,21 +396,18 @@ function simulateCheckAndCatchUp({ enabled, mode, now, utcResetDay, lastCheckedD
 test("checkAndCatchUp only runs when master switch is ON and mode is utcReset", () => {
     const friday7am = new Date(Date.UTC(2026, 9, 30, 7, 0, 0));
 
-    // Master OFF -> skips catch up even if missed
     assert.equal(
         simulateCheckAndCatchUp({ enabled: false, mode: "utcReset", now: friday7am, utcResetDay: "5", lastCheckedDate: "2026-10-23" }),
         false,
         "Master toggle off must prevent catch up"
     );
 
-    // Interval mode -> skips catch up even if missed
     assert.equal(
         simulateCheckAndCatchUp({ enabled: true, mode: "interval", now: friday7am, utcResetDay: "5", lastCheckedDate: "2026-10-23" }),
         false,
         "Interval mode must not trigger UTC catch up"
     );
 
-    // UTC reset mode + Master ON -> catches up
     assert.equal(
         simulateCheckAndCatchUp({ enabled: true, mode: "utcReset", now: friday7am, utcResetDay: "5", lastCheckedDate: "2026-10-23" }),
         true,
@@ -514,7 +415,67 @@ test("checkAndCatchUp only runs when master switch is ON and mode is utcReset", 
     );
 });
 
+// --- 17. getRewardIcons ---
+test("getRewardIcons extracts icon urls by id and name from manifest", () => {
+    const manifest = {
+        data: {
+            component: {
+                rewards: [
+                    {
+                        id: "1986632021321089024",
+                        type: "gmtItem",
+                        icon: "https://oss-resource.farlightgames.com/p/event/c9dec9d70a699ce9457d7bfd7e21ac11.png",
+                        name: "200 Đá Quý",
+                        count: 1
+                    }
+                ]
+            }
+        }
+    };
 
+    const icons = getRewardIcons(manifest);
+    assert.equal(icons["1986632021321089024"], "https://oss-resource.farlightgames.com/p/event/c9dec9d70a699ce9457d7bfd7e21ac11.png");
+    assert.equal(icons["200 Đá Quý"], "https://oss-resource.farlightgames.com/p/event/c9dec9d70a699ce9457d7bfd7e21ac11.png");
+});
 
+// --- 18. multi-character draw simulation ---
+test("multi-character draw processes all characters even if first has 0 draws", () => {
+    const roles = [
+        { roleId: "1", name: "CharA", draws: 0 },
+        { roleId: "2", name: "CharB", draws: 2 },
+        { roleId: "3", name: "CharC", draws: 1 }
+    ];
 
+    const drawn = [];
+    for (const role of roles) {
+        let count = role.draws;
+        if (count > 0) {
+            while (count > 0) {
+                drawn.push(role.name);
+                count--;
+            }
+        }
+    }
 
+    assert.deepEqual(drawn, ["CharB", "CharB", "CharC"]);
+    const totalDraws = roles.reduce((sum, r) => sum + r.draws, 0);
+    assert.equal(totalDraws, 3);
+});
+
+// --- 19. buildSingleDiscordRewardEmbed ---
+test("buildSingleDiscordRewardEmbed generates single embed matching template", () => {
+    const role = { roleId: "123456789", name: "DragonSlayer", avatar: "https://example.com/avatar.png" };
+    const rewards = { "Legendary Chest": 5 };
+    const sessionRewardIcons = { "Legendary Chest": "https://example.com/chest.png" };
+
+    const embed = buildSingleDiscordRewardEmbed("Plutomall", role, rewards, sessionRewardIcons);
+    assert.equal(embed.title, "🎉 LUCKY DRAW - PLUTOMALL");
+    assert.equal(embed.color, 16757578);
+    assert.equal(embed.thumbnail.url, "https://example.com/avatar.png");
+    assert.deepEqual(embed.fields[0], { name: "👤 Nhân vật", value: "**DragonSlayer**", inline: true });
+    assert.deepEqual(embed.fields[1], { name: "🆔 Character ID", value: "123456789", inline: true });
+    assert.equal(embed.fields[2].value.includes("**[Legendary Chest](https://example.com/chest.png) x5**"), true);
+    assert.equal(embed.image.url, "https://example.com/chest.png");
+    assert.equal(embed.footer.text, "Plutomall • Lucky Draw System");
+    assert.equal(typeof embed.timestamp, "string");
+});

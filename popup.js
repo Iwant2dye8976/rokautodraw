@@ -132,9 +132,7 @@ const additionalSettingsBody = document.getElementById("additionalSettingsBody")
 const CONFIG_FORMAT = "rok-weekly-auto-config";
 
 function exportToCsv(filename, rows) {
-    const csvContent = "\uFEFF" + rows
-        .map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
-        .join("\r\n");
+    const csvContent = toCsv(rows);
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const downloadUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -241,6 +239,8 @@ let accountsByMall = { plutomall: [], lilithstore: [] };
 let cachedRoles = [];
 let cachedMall = null;
 let cachedAccountId = null;
+// While a manual refresh runs, its own storage writes must not re-render (and cancel) the view.
+let refreshInFlight = false;
 const accountExpandedState = new Map();
 const activeAccountSelect = document.getElementById("activeAccountSelect");
 
@@ -248,32 +248,10 @@ function getSelectedAccountId() {
     return activeAccountSelect?.value || "";
 }
 
-function accountStorageKey(mall, accountId, name) {
-    return accountId ? `${mall}_account_${accountId}_${name}` : `${mall}_${name}`;
-}
-
 function isCurrentAccountView(mall, accountId, viewVersion) {
     return viewVersion === accountViewVersion &&
         mall === getSelectedMall() &&
         accountId === getSelectedAccountId();
-}
-
-function isJwtExpired(token) {
-    if (!token || typeof token !== "string") return false;
-    try {
-        const clean = token.replace(/^Bearer\s+/i, "").trim();
-        const parts = clean.split(".");
-        if (parts.length < 2) return false;
-        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-        const jsonStr = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
-        const payload = JSON.parse(jsonStr);
-        if (typeof payload?.exp === "number") {
-            return Math.floor(Date.now() / 1000) >= payload.exp;
-        }
-    } catch {
-        // parsing failed or non-JWT token
-    }
-    return false;
 }
 
 function evaluateTokenStatus(token, isValidToken) {
@@ -287,7 +265,10 @@ function evaluateTokenStatus(token, isValidToken) {
         return { text: "Token không hợp lệ", state: false };
     }
     if (isValidToken === true) {
-        return { text: "Token OK", state: true };
+        const exp = getJwtExp(token);
+        if (exp === null) return { text: "Token OK", state: true };
+        const hoursLeft = Math.floor((exp * 1000 - Date.now()) / 3600000);
+        return { text: `Token OK (còn ${Math.floor(hoursLeft / 24)}d ${hoursLeft % 24}h)`, state: true };
     }
     return { text: "Token đã lưu", state: true };
 }
@@ -395,27 +376,6 @@ async function detectMall() {
     const mall = currentMall || "plutomall";
     syncRadio(mall);
     return mall;
-}
-
-function normalizeSearchText(str) {
-    return String(str ?? "")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/đ/g, "d")
-        .replace(/Đ/g, "D");
-}
-
-function matchesSearch(role, rawQuery) {
-    const q = rawQuery.trim().toLowerCase();
-    if (!q) return true;
-    const qNorm = normalizeSearchText(q);
-    const name = String(role.name ?? "").toLowerCase();
-    const id = String(role.roleId ?? "").toLowerCase();
-    const svr = String(role.svrId ?? "").toLowerCase();
-    return name.includes(q) || id.includes(q) || svr.includes(q) ||
-           normalizeSearchText(name).includes(qNorm) ||
-           normalizeSearchText(svr).includes(qNorm);
 }
 
 let searchDebounceTimer;
@@ -652,7 +612,7 @@ async function renderCache(mall) {
         const drawBtn = document.getElementById("drawNowBtn");
         if (drawBtn) {
             drawBtn.disabled = !!isDrawing;
-            drawBtn.textContent = isDrawing ? "Đang quay…" : "Quay thưởng ngay";
+            drawBtn.textContent = isDrawing ? "Đang quay…" : "Quay tài khoản này";
         }
 
         if (res.roles?.length > 0) {
@@ -675,8 +635,10 @@ async function fetchAndRender(mall) {
     const viewVersion = ++accountViewVersion;
     setStatus("Đang làm mới…", null);
     setCharsLoading();
+    refreshInFlight = true;
     return new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({ action: "refresh", mall: m, accountId }, async (res) => {
+            refreshInFlight = false;
             if (!isCurrentAccountView(m, accountId, viewVersion)) {
                 resolve(null);
                 return;
@@ -721,7 +683,8 @@ async function fetchAndRender(mall) {
                 return;
             }
 
-            setStatus("Token OK", true);
+            const status = evaluateTokenStatus(tokenBox.value, true);
+            setStatus(status.text, status.state);
             renderDrawsLeft(res.totalDrawsLeft);
 
             const roles = Array.isArray(res.roles) ? res.roles : [];
@@ -1972,12 +1935,6 @@ if (webhookEnabledCheckbox && webhookUrlInput) {
         setWebhookStatus(enabled ? "Đã bật thông báo Webhook." : "Đã tắt thông báo Webhook.");
     });
 
-    function parseWebhookUrls(raw) {
-        if (!raw) return [];
-        const lines = Array.isArray(raw) ? raw : String(raw).split("\n");
-        return [...new Set(lines.map(u => String(u).trim()).filter(u => u.startsWith("http")))];
-    }
-
     if (saveWebhookBtn) {
         saveWebhookBtn.addEventListener("click", async () => {
             const urlText = webhookUrlInput.value.trim();
@@ -1987,22 +1944,28 @@ if (webhookEnabledCheckbox && webhookUrlInput) {
         });
     }
 
-    if (testWebhookBtn) {
-        testWebhookBtn.addEventListener("click", () => {
-            testWebhookBtn.disabled = true;
-            setWebhookStatus("Đang gửi thử nghiệm...");
-            const currentVal = webhookUrlInput.value.trim();
-            chrome.runtime.sendMessage({ action: "testWebhook", url: currentVal }, res => {
-                testWebhookBtn.disabled = false;
-                if (res?.ok) {
-                    const success = res.successCount ?? 1;
-                    const total = res.totalCount ?? success;
-                    setWebhookStatus(`Gửi thành công ${success}/${total} webhook!`);
-                } else {
-                    setWebhookStatus(`Gửi thất bại: ${res?.error || "Vui lòng kiểm tra lại URL"}`);
-                }
-            });
+    function handleTestWebhook(btn) {
+        btn.disabled = true;
+        setWebhookStatus("Đang gửi thử nghiệm...");
+        const currentVal = webhookUrlInput.value.trim();
+        chrome.runtime.sendMessage({ action: "testWebhook", url: currentVal }, res => {
+            btn.disabled = false;
+            if (chrome.runtime.lastError) {
+                setWebhookStatus(`Lỗi extension: ${chrome.runtime.lastError.message}. Hãy tải lại tiện ích.`);
+                return;
+            }
+            if (res?.ok) {
+                const success = res.successCount ?? 1;
+                const total = res.totalCount ?? success;
+                setWebhookStatus(`Gửi thành công ${success}/${total} webhook!`);
+            } else {
+                setWebhookStatus(`Gửi thất bại: ${res?.error || "Vui lòng kiểm tra lại URL"}`);
+            }
         });
+    }
+
+    if (testWebhookBtn) {
+        testWebhookBtn.addEventListener("click", () => handleTestWebhook(testWebhookBtn));
     }
 }
 
@@ -2112,7 +2075,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         const btn = document.getElementById("drawNowBtn");
         if (btn) {
             btn.disabled = isDrawing;
-            btn.textContent = isDrawing ? "Đang quay…" : "Quay thưởng ngay";
+            btn.textContent = isDrawing ? "Đang quay…" : "Quay tài khoản này";
         }
     }
     const drawsLeftKey = accountStorageKey(mall, accountId, "drawsLeft");
@@ -2123,9 +2086,11 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         renderDrawsLeft(changes[drawsLeftKey].newValue);
     }
     if (
-        changes[accountStorageKey(mall, accountId, "token")] ||
-        changes[accountStorageKey(mall, accountId, "isValidToken")] ||
-        changes[accountStorageKey(mall, accountId, "roles")]
+        !refreshInFlight && (
+            changes[accountStorageKey(mall, accountId, "token")] ||
+            changes[accountStorageKey(mall, accountId, "isValidToken")] ||
+            changes[accountStorageKey(mall, accountId, "roles")]
+        )
     ) {
         renderCache(mall);
     }
@@ -2195,7 +2160,7 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             logEl.textContent = "Kiểm tra hoàn tất: không còn lượt quay nào.";
             return;
         }
-        fetchAndRender(mall).catch(() => {});
+        void renderCache(mall);
     });
 });
 
@@ -2257,7 +2222,7 @@ if (drawAllBtn) {
                 setStatus(res.error, false);
                 return;
             }
-            fetchAndRender(getSelectedMall()).catch(() => {});
+            void renderCache(getSelectedMall());
         });
     });
 }
