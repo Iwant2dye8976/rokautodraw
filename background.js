@@ -85,15 +85,42 @@ async function postSingleWebhook(webhookUrl, text, discordPayload = null) {
 
 async function sendWebhookMessage(text, discordPayload = null) {
     try {
-        const { webhookEnabled, webhookUrl } = await chrome.storage.local.get([
+        const {
+            discordWebhookEnabled,
+            discordWebhookUrl,
+            telegramWebhookEnabled,
+            telegramWebhookUrl,
+            webhookEnabled,
+            webhookUrl,
+        } = await chrome.storage.local.get([
+            "discordWebhookEnabled",
+            "discordWebhookUrl",
+            "telegramWebhookEnabled",
+            "telegramWebhookUrl",
             "webhookEnabled",
             "webhookUrl",
         ]);
-        if (!webhookEnabled) return false;
-        const urls = parseWebhookUrls(webhookUrl);
-        if (urls.length === 0) return false;
 
-        const results = await Promise.allSettled(urls.map(url => postSingleWebhook(url, text, discordPayload)));
+        const targets = [];
+        if (discordWebhookEnabled) {
+            const urls = parseWebhookUrls(discordWebhookUrl);
+            for (const url of urls) targets.push({ url, payload: discordPayload });
+        }
+        if (telegramWebhookEnabled) {
+            const urls = parseWebhookUrls(telegramWebhookUrl);
+            for (const url of urls) targets.push({ url, payload: null });
+        }
+        // Legacy fallback if neither new toggle has been explicitly configured
+        if (discordWebhookEnabled === undefined && telegramWebhookEnabled === undefined && webhookEnabled) {
+            const urls = parseWebhookUrls(webhookUrl);
+            for (const url of urls) targets.push({ url, payload: discordPayload });
+        }
+
+        if (targets.length === 0) return false;
+
+        const results = await Promise.allSettled(
+            targets.map(({ url, payload }) => postSingleWebhook(url, text, payload))
+        );
         return results.some(r => r.status === "fulfilled" && r.value === true);
     } catch (e) {
         console.warn("[LilithDraw] Webhook send failed:", e);
@@ -1780,14 +1807,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "testWebhook") {
         (async () => {
             const lang = await getLanguage();
-            const { webhookUrl } = await chrome.storage.local.get("webhookUrl");
-            const urls = parseWebhookUrls(msg.url || webhookUrl);
+            let rawUrls = msg.url;
+            if (!rawUrls) {
+                if (msg.type === "discord") {
+                    const data = await chrome.storage.local.get("discordWebhookUrl");
+                    rawUrls = data.discordWebhookUrl;
+                } else if (msg.type === "telegram") {
+                    const data = await chrome.storage.local.get("telegramWebhookUrl");
+                    rawUrls = data.telegramWebhookUrl;
+                } else {
+                    const data = await chrome.storage.local.get(["webhookUrl", "discordWebhookUrl", "telegramWebhookUrl"]);
+                    rawUrls = [data.discordWebhookUrl, data.telegramWebhookUrl, data.webhookUrl].filter(Boolean).join("\n");
+                }
+            }
+            const urls = parseWebhookUrls(rawUrls);
             if (urls.length === 0) {
                 sendResponse({ ok: false, error: t("noValidWebhookUrlError", {}, lang) });
                 return;
             }
+            const testDiscordPayload = msg.type === "discord"
+                ? {
+                    username: "Lucky Draw Bot",
+                    content: "🔔 [ROK Auto] Discord Webhook test successful!",
+                }
+                : null;
             const results = await Promise.allSettled(
-                urls.map(u => postSingleWebhook(u, msg.text || t("webhookTestMessage", {}, lang)))
+                urls.map(u => postSingleWebhook(u, msg.text || t("webhookTestMessage", {}, lang), testDiscordPayload))
             );
             const successCount = results.filter(r => r.status === "fulfilled" && r.value === true).length;
             const failure = results.find(r => r.status === "rejected")?.reason?.message;

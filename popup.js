@@ -128,9 +128,6 @@ function applyLanguage(lang, rerenderDynamic = true) {
     applyStaticDomTranslations();
     applyTheme(currentThemeSetting);
     updateSwitchToggleLabels();
-    if (typeof webhookEnabledCheckbox !== "undefined" && webhookEnabledCheckbox && webhookToggleLabel) {
-        webhookToggleLabel.textContent = webhookEnabledCheckbox.checked ? tr("toggleOn") : tr("toggleOff");
-    }
     if (typeof updateConfigSelectionButton === "function") {
         updateConfigSelectionButton();
     }
@@ -232,6 +229,12 @@ function updateSwitchToggleLabels() {
     }
     if (autoReloginToggleLabel && autoReloginCheckbox) {
         autoReloginToggleLabel.textContent = autoReloginCheckbox.checked ? tr("toggleOn") : tr("toggleOff");
+    }
+    if (typeof discordWebhookToggleLabel !== "undefined" && discordWebhookToggleLabel && typeof discordWebhookEnabledCheckbox !== "undefined" && discordWebhookEnabledCheckbox) {
+        discordWebhookToggleLabel.textContent = discordWebhookEnabledCheckbox.checked ? tr("toggleOn") : tr("toggleOff");
+    }
+    if (typeof telegramWebhookToggleLabel !== "undefined" && telegramWebhookToggleLabel && typeof telegramWebhookEnabledCheckbox !== "undefined" && telegramWebhookEnabledCheckbox) {
+        telegramWebhookToggleLabel.textContent = telegramWebhookEnabledCheckbox.checked ? tr("toggleOn") : tr("toggleOff");
     }
 }
 
@@ -1772,6 +1775,12 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
         await persistLoginAccounts({ validate: false });
         const accountDataKeys = new Set(["favoriteRoleIds", "tokens"]);
         const storageKeys = selectedKeys.filter(key => !accountDataKeys.has(key));
+        if (selectedKeys.includes("discordWebhookEnabled") && !storageKeys.includes("discordWebhookUrl")) {
+            storageKeys.push("discordWebhookUrl");
+        }
+        if (selectedKeys.includes("telegramWebhookEnabled") && !storageKeys.includes("telegramWebhookUrl")) {
+            storageKeys.push("telegramWebhookUrl");
+        }
         if (selectedKeys.includes("webhookEnabled") && !storageKeys.includes("webhookUrl")) {
             storageKeys.push("webhookUrl");
         }
@@ -1793,7 +1802,9 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
             theme: currentThemeSetting,
             language: currentLanguage,
             utcResetDay: utcResetDaySelect?.value || "5",
-            webhookEnabled: Boolean(document.getElementById("webhookEnabled")?.checked),
+            discordWebhookEnabled: Boolean(document.getElementById("discordWebhookEnabled")?.checked),
+            telegramWebhookEnabled: Boolean(document.getElementById("telegramWebhookEnabled")?.checked),
+            webhookEnabled: Boolean(document.getElementById("discordWebhookEnabled")?.checked || document.getElementById("telegramWebhookEnabled")?.checked),
         };
         const settings = buildExportSettings(selectedKeys, storedSettings, currentSettings);
         if (settings.storeAccounts && typeof settings.storeAccounts === "object") {
@@ -1965,14 +1976,29 @@ importConfigFile.addEventListener("change", async () => {
         if (Object.prototype.hasOwnProperty.call(importedSettings, "theme")) {
             applyTheme(importedSettings.theme);
         }
-        if (Object.prototype.hasOwnProperty.call(importedSettings, "webhookEnabled") && webhookEnabledCheckbox) {
-            webhookEnabledCheckbox.checked = importedSettings.webhookEnabled;
-            if (webhookToggleLabel) {
-                webhookToggleLabel.textContent = importedSettings.webhookEnabled ? tr("toggleOn") : tr("toggleOff");
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "discordWebhookEnabled") && discordWebhookEnabledCheckbox) {
+            discordWebhookEnabledCheckbox.checked = importedSettings.discordWebhookEnabled;
+            if (discordWebhookToggleLabel) {
+                discordWebhookToggleLabel.textContent = importedSettings.discordWebhookEnabled ? tr("toggleOn") : tr("toggleOff");
             }
         }
-        if (Object.prototype.hasOwnProperty.call(importedSettings, "webhookUrl") && webhookUrlInput) {
-            webhookUrlInput.value = importedSettings.webhookUrl;
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "discordWebhookUrl") && discordWebhookUrlInput) {
+            discordWebhookUrlInput.value = importedSettings.discordWebhookUrl;
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "telegramWebhookEnabled") && telegramWebhookEnabledCheckbox) {
+            telegramWebhookEnabledCheckbox.checked = importedSettings.telegramWebhookEnabled;
+            if (telegramWebhookToggleLabel) {
+                telegramWebhookToggleLabel.textContent = importedSettings.telegramWebhookEnabled ? tr("toggleOn") : tr("toggleOff");
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "telegramWebhookUrl") && telegramWebhookUrlInput) {
+            telegramWebhookUrlInput.value = importedSettings.telegramWebhookUrl;
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "webhookEnabled") && !Object.prototype.hasOwnProperty.call(importedSettings, "discordWebhookEnabled") && discordWebhookEnabledCheckbox) {
+            discordWebhookEnabledCheckbox.checked = importedSettings.webhookEnabled;
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "webhookUrl") && !Object.prototype.hasOwnProperty.call(importedSettings, "discordWebhookUrl") && discordWebhookUrlInput) {
+            discordWebhookUrlInput.value = importedSettings.webhookUrl;
         }
         if (
             Object.prototype.hasOwnProperty.call(importedSettings, "rewardTotals") ||
@@ -2028,75 +2054,159 @@ if (utcResetDaySelect) {
     });
 }
 
-// --- Webhook Settings ---
-const webhookEnabledCheckbox = document.getElementById("webhookEnabled");
-const webhookToggleLabel = document.getElementById("webhookToggleLabel");
-const webhookUrlInput = document.getElementById("webhookUrl");
-const saveWebhookBtn = document.getElementById("saveWebhookBtn");
-const testWebhookBtn = document.getElementById("testWebhookBtn");
-const webhookSettingsStatus = document.getElementById("webhookSettingsStatus");
+// --- Discord & Telegram Webhook Settings ---
+const discordWebhookEnabledCheckbox = document.getElementById("discordWebhookEnabled");
+const discordWebhookToggleLabel = document.getElementById("discordWebhookToggleLabel");
+const discordWebhookUrlInput = document.getElementById("discordWebhookUrl");
+const saveDiscordWebhookBtn = document.getElementById("saveDiscordWebhookBtn");
+const testDiscordWebhookBtn = document.getElementById("testDiscordWebhookBtn");
+const discordWebhookSettingsStatus = document.getElementById("discordWebhookSettingsStatus");
 
-function setWebhookStatus(msg) {
-    if (webhookSettingsStatus) {
-        webhookSettingsStatus.textContent = msg;
+const telegramWebhookEnabledCheckbox = document.getElementById("telegramWebhookEnabled");
+const telegramWebhookToggleLabel = document.getElementById("telegramWebhookToggleLabel");
+const telegramWebhookUrlInput = document.getElementById("telegramWebhookUrl");
+const saveTelegramWebhookBtn = document.getElementById("saveTelegramWebhookBtn");
+const testTelegramWebhookBtn = document.getElementById("testTelegramWebhookBtn");
+const telegramWebhookSettingsStatus = document.getElementById("telegramWebhookSettingsStatus");
+
+function setDiscordWebhookStatus(msg) {
+    if (discordWebhookSettingsStatus) {
+        discordWebhookSettingsStatus.textContent = msg;
         setTimeout(() => {
-            if (webhookSettingsStatus.textContent === msg) {
-                webhookSettingsStatus.textContent = "";
+            if (discordWebhookSettingsStatus.textContent === msg) {
+                discordWebhookSettingsStatus.textContent = "";
             }
         }, 4000);
     }
 }
 
-if (webhookEnabledCheckbox && webhookUrlInput) {
-    chrome.storage.local.get(["webhookEnabled", "webhookUrl"], data => {
-        webhookEnabledCheckbox.checked = Boolean(data.webhookEnabled);
-        if (webhookToggleLabel) {
-            webhookToggleLabel.textContent = data.webhookEnabled ? tr("toggleOn") : tr("toggleOff");
-        }
-        webhookUrlInput.value = data.webhookUrl || "";
-    });
-
-    webhookEnabledCheckbox.addEventListener("change", async () => {
-        const enabled = webhookEnabledCheckbox.checked;
-        if (webhookToggleLabel) {
-            webhookToggleLabel.textContent = enabled ? tr("toggleOn") : tr("toggleOff");
-        }
-        await chrome.storage.local.set({ webhookEnabled: enabled });
-        setWebhookStatus(enabled ? tr("webhookEnabledStatus") : tr("webhookDisabledStatus"));
-    });
-
-    if (saveWebhookBtn) {
-        saveWebhookBtn.addEventListener("click", async () => {
-            const urlText = webhookUrlInput.value.trim();
-            await chrome.storage.local.set({ webhookUrl: urlText });
-            const count = parseWebhookUrls(urlText).length;
-            setWebhookStatus(count > 0 ? tr("webhookSavedCountStatus", { count }) : tr("webhookSavedEmptyStatus"));
-        });
-    }
-
-    function handleTestWebhook(btn) {
-        btn.disabled = true;
-        setWebhookStatus(tr("webhookSendingTest"));
-        const currentVal = webhookUrlInput.value.trim();
-        chrome.runtime.sendMessage({ action: "testWebhook", url: currentVal }, res => {
-            btn.disabled = false;
-            if (chrome.runtime.lastError) {
-                setWebhookStatus(tr("webhookExtError", { error: chrome.runtime.lastError.message }));
-                return;
+function setTelegramWebhookStatus(msg) {
+    if (telegramWebhookSettingsStatus) {
+        telegramWebhookSettingsStatus.textContent = msg;
+        setTimeout(() => {
+            if (telegramWebhookSettingsStatus.textContent === msg) {
+                telegramWebhookSettingsStatus.textContent = "";
             }
-            if (res?.ok) {
-                const success = res.successCount ?? 1;
-                const total = res.totalCount ?? success;
-                setWebhookStatus(tr("webhookTestSuccess", { success, total }));
-            } else {
-                setWebhookStatus(tr("webhookTestFailed", { error: res?.error || tr("webhookCheckUrlFallback") }));
-            }
-        });
+        }, 4000);
+    }
+}
+
+chrome.storage.local.get([
+    "discordWebhookEnabled",
+    "discordWebhookUrl",
+    "telegramWebhookEnabled",
+    "telegramWebhookUrl",
+    "webhookEnabled",
+    "webhookUrl",
+], data => {
+    let discordUrl = data.discordWebhookUrl;
+    let telegramUrl = data.telegramWebhookUrl;
+    let discordEnabled = data.discordWebhookEnabled;
+    let telegramEnabled = data.telegramWebhookEnabled;
+
+    if (discordUrl === undefined && telegramUrl === undefined && typeof data.webhookUrl === "string") {
+        const legacyUrls = parseWebhookUrls(data.webhookUrl);
+        const discordLines = legacyUrls.filter(u => u.includes("discord.com") || u.includes("discordapp.com"));
+        const telegramLines = legacyUrls.filter(u => u.includes("api.telegram.org"));
+        if (discordLines.length > 0) discordUrl = discordLines.join("\n");
+        if (telegramLines.length > 0) telegramUrl = telegramLines.join("\n");
+        if (data.webhookEnabled !== undefined) {
+            if (discordLines.length > 0) discordEnabled = Boolean(data.webhookEnabled);
+            if (telegramLines.length > 0) telegramEnabled = Boolean(data.webhookEnabled);
+        }
     }
 
-    if (testWebhookBtn) {
-        testWebhookBtn.addEventListener("click", () => handleTestWebhook(testWebhookBtn));
+    if (discordWebhookEnabledCheckbox) {
+        discordWebhookEnabledCheckbox.checked = Boolean(discordEnabled);
+        if (discordWebhookToggleLabel) {
+            discordWebhookToggleLabel.textContent = discordEnabled ? tr("toggleOn") : tr("toggleOff");
+        }
     }
+    if (discordWebhookUrlInput) {
+        discordWebhookUrlInput.value = discordUrl || "";
+    }
+
+    if (telegramWebhookEnabledCheckbox) {
+        telegramWebhookEnabledCheckbox.checked = Boolean(telegramEnabled);
+        if (telegramWebhookToggleLabel) {
+            telegramWebhookToggleLabel.textContent = telegramEnabled ? tr("toggleOn") : tr("toggleOff");
+        }
+    }
+    if (telegramWebhookUrlInput) {
+        telegramWebhookUrlInput.value = telegramUrl || "";
+    }
+});
+
+if (discordWebhookEnabledCheckbox) {
+    discordWebhookEnabledCheckbox.addEventListener("change", async () => {
+        const enabled = discordWebhookEnabledCheckbox.checked;
+        if (discordWebhookToggleLabel) {
+            discordWebhookToggleLabel.textContent = enabled ? tr("toggleOn") : tr("toggleOff");
+        }
+        await chrome.storage.local.set({ discordWebhookEnabled: enabled });
+        setDiscordWebhookStatus(enabled ? tr("discordWebhookEnabledStatus") : tr("discordWebhookDisabledStatus"));
+    });
+}
+
+if (saveDiscordWebhookBtn && discordWebhookUrlInput) {
+    saveDiscordWebhookBtn.addEventListener("click", async () => {
+        const urlText = discordWebhookUrlInput.value.trim();
+        await chrome.storage.local.set({ discordWebhookUrl: urlText });
+        const count = parseWebhookUrls(urlText).length;
+        setDiscordWebhookStatus(count > 0 ? tr("discordWebhookSavedStatus", { count }) : tr("discordWebhookSavedEmptyStatus"));
+    });
+}
+
+function handleWebhookTest(btn, type, urlInput, setStatusFn) {
+    btn.disabled = true;
+    setStatusFn(tr("webhookSendingTest"));
+    const currentVal = urlInput.value.trim();
+    chrome.runtime.sendMessage({ action: "testWebhook", type, url: currentVal }, res => {
+        btn.disabled = false;
+        if (chrome.runtime.lastError) {
+            setStatusFn(tr("webhookExtError", { error: chrome.runtime.lastError.message }));
+            return;
+        }
+        if (res?.ok) {
+            const success = res.successCount ?? 1;
+            const total = res.totalCount ?? success;
+            setStatusFn(tr("webhookTestSuccess", { success, total }));
+        } else {
+            setStatusFn(tr("webhookTestFailed", { error: res?.error || tr("webhookCheckUrlFallback") }));
+        }
+    });
+}
+
+if (testDiscordWebhookBtn && discordWebhookUrlInput) {
+    testDiscordWebhookBtn.addEventListener("click", () =>
+        handleWebhookTest(testDiscordWebhookBtn, "discord", discordWebhookUrlInput, setDiscordWebhookStatus)
+    );
+}
+
+if (telegramWebhookEnabledCheckbox) {
+    telegramWebhookEnabledCheckbox.addEventListener("change", async () => {
+        const enabled = telegramWebhookEnabledCheckbox.checked;
+        if (telegramWebhookToggleLabel) {
+            telegramWebhookToggleLabel.textContent = enabled ? tr("toggleOn") : tr("toggleOff");
+        }
+        await chrome.storage.local.set({ telegramWebhookEnabled: enabled });
+        setTelegramWebhookStatus(enabled ? tr("telegramWebhookEnabledStatus") : tr("telegramWebhookDisabledStatus"));
+    });
+}
+
+if (saveTelegramWebhookBtn && telegramWebhookUrlInput) {
+    saveTelegramWebhookBtn.addEventListener("click", async () => {
+        const urlText = telegramWebhookUrlInput.value.trim();
+        await chrome.storage.local.set({ telegramWebhookUrl: urlText });
+        const count = parseWebhookUrls(urlText).length;
+        setTelegramWebhookStatus(count > 0 ? tr("telegramWebhookSavedStatus", { count }) : tr("telegramWebhookSavedEmptyStatus"));
+    });
+}
+
+if (testTelegramWebhookBtn && telegramWebhookUrlInput) {
+    testTelegramWebhookBtn.addEventListener("click", () =>
+        handleWebhookTest(testTelegramWebhookBtn, "telegram", telegramWebhookUrlInput, setTelegramWebhookStatus)
+    );
 }
 
 // --- Reward Totals Summary & Weekly Leaderboard ---
@@ -2298,6 +2408,20 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     if (changes.autoReloginEnabled) {
         autoReloginCheckbox.checked = changes.autoReloginEnabled.newValue === true;
         updateSwitchToggleLabels();
+    }
+    if (changes.discordWebhookEnabled && discordWebhookEnabledCheckbox) {
+        discordWebhookEnabledCheckbox.checked = changes.discordWebhookEnabled.newValue === true;
+        updateSwitchToggleLabels();
+    }
+    if (changes.discordWebhookUrl && discordWebhookUrlInput && document.activeElement !== discordWebhookUrlInput) {
+        discordWebhookUrlInput.value = changes.discordWebhookUrl.newValue || "";
+    }
+    if (changes.telegramWebhookEnabled && telegramWebhookEnabledCheckbox) {
+        telegramWebhookEnabledCheckbox.checked = changes.telegramWebhookEnabled.newValue === true;
+        updateSwitchToggleLabels();
+    }
+    if (changes.telegramWebhookUrl && telegramWebhookUrlInput && document.activeElement !== telegramWebhookUrlInput) {
+        telegramWebhookUrlInput.value = changes.telegramWebhookUrl.newValue || "";
     }
     if (changes.autoReloginStatus?.newValue) {
         setLoginSettingsStatus(changes.autoReloginStatus.newValue);

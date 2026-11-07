@@ -351,35 +351,64 @@
     <!-- TAB 4: SYSTEM & CONFIG -->
     <section class="tab-panel" id="tabPanelSystem" data-tab-panel="system" role="tabpanel"
       aria-labelledby="navTabSystem" hidden>
-      <!-- Webhook Notification Section -->
-      <section class="settings-section" aria-labelledby="webhookTitle">
+      <!-- Discord Webhook Section -->
+      <section class="settings-section" aria-labelledby="discordWebhookTitle">
         <div class="settings-section-head">
-          <h2 class="settings-section-title" id="webhookTitle" data-i18n="webhookTitle">Webhook Notifications</h2>
-          <label class="switch-toggle" for="webhookEnabled">
-            <span class="settings-toggle-label" id="webhookToggleLabel" data-i18n="toggleOff">Off</span>
-            <input id="webhookEnabled" type="checkbox" role="switch" />
+          <h2 class="settings-section-title" id="discordWebhookTitle" data-i18n="discordWebhookTitle">Discord Webhook</h2>
+          <label class="switch-toggle" for="discordWebhookEnabled">
+            <span class="settings-toggle-label" id="discordWebhookToggleLabel" data-i18n="toggleOff">Off</span>
+            <input id="discordWebhookEnabled" type="checkbox" role="switch" />
             <span class="switch-track" aria-hidden="true"></span>
           </label>
         </div>
-        <div class="settings-section-content" id="webhookSettings">
-          <label class="login-field" for="webhookUrl">
-            <span class="input-label" data-i18n="webhookUrlLabel">Webhook URLs (one URL per line)</span>
-            <textarea id="webhookUrl" rows="3"
-              placeholder="https://discord.com/api/webhooks/...&#10;https://api.telegram.org/bot..."
+        <div class="settings-section-content" id="discordWebhookSettings">
+          <label class="login-field" for="discordWebhookUrl">
+            <span class="input-label" data-i18n="discordWebhookUrlLabel">Discord Webhook URLs (one URL per line)</span>
+            <textarea id="discordWebhookUrl" rows="2"
+              placeholder="https://discord.com/api/webhooks/ID/TOKEN"
               autocomplete="off" spellcheck="false"></textarea>
           </label>
           <div class="btn-row webhook-actions">
-            <button class="btn-util btn-primary-outline" id="saveWebhookBtn" type="button"
-              data-i18n="saveWebhookBtn">Save Webhook</button>
-            <button class="btn-util" id="testWebhookBtn" type="button" data-i18n="testWebhookBtn">Send Test</button>
+            <button class="btn-util btn-primary-outline" id="saveDiscordWebhookBtn" type="button"
+              data-i18n="saveDiscordWebhookBtn">Save Discord</button>
+            <button class="btn-util" id="testDiscordWebhookBtn" type="button" data-i18n="testDiscordWebhookBtn">Send Test</button>
           </div>
-          <div class="login-settings-status" id="webhookSettingsStatus" role="status" aria-live="polite"></div>
+          <div class="login-settings-status" id="discordWebhookSettingsStatus" role="status" aria-live="polite"></div>
           <div class="webhook-guide">
             <div class="webhook-guide-title" data-i18n="webhookGuideTitle">Supported webhook formats:</div>
             <div class="webhook-guide-item">
               <span class="webhook-guide-badge">Discord</span>
               <code>https://discord.com/api/webhooks/ID/TOKEN</code>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Telegram Webhook Section -->
+      <section class="settings-section" aria-labelledby="telegramWebhookTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="telegramWebhookTitle" data-i18n="telegramWebhookTitle">Telegram Webhook</h2>
+          <label class="switch-toggle" for="telegramWebhookEnabled">
+            <span class="settings-toggle-label" id="telegramWebhookToggleLabel" data-i18n="toggleOff">Off</span>
+            <input id="telegramWebhookEnabled" type="checkbox" role="switch" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="settings-section-content" id="telegramWebhookSettings">
+          <label class="login-field" for="telegramWebhookUrl">
+            <span class="input-label" data-i18n="telegramWebhookUrlLabel">Telegram Webhook URLs (one URL per line)</span>
+            <textarea id="telegramWebhookUrl" rows="2"
+              placeholder="https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;"
+              autocomplete="off" spellcheck="false"></textarea>
+          </label>
+          <div class="btn-row webhook-actions">
+            <button class="btn-util btn-primary-outline" id="saveTelegramWebhookBtn" type="button"
+              data-i18n="saveTelegramWebhookBtn">Save Telegram</button>
+            <button class="btn-util" id="testTelegramWebhookBtn" type="button" data-i18n="testTelegramWebhookBtn">Send Test</button>
+          </div>
+          <div class="login-settings-status" id="telegramWebhookSettingsStatus" role="status" aria-live="polite"></div>
+          <div class="webhook-guide">
+            <div class="webhook-guide-title" data-i18n="webhookGuideTitle">Supported webhook formats:</div>
             <div class="webhook-guide-item">
               <span class="webhook-guide-badge">Telegram</span>
               <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;</code>
@@ -434,8 +463,12 @@
             <span data-i18n="configOptAutoCheckMode">Auto check mode (UTC / Interval)</span>
           </label>
           <label>
-            <input type="checkbox" value="webhookEnabled" checked />
-            <span data-i18n="configOptWebhookEnabled">Enable Webhook notifications</span>
+            <input type="checkbox" value="discordWebhookEnabled" checked />
+            <span data-i18n="configOptDiscordWebhook">Discord Webhook notifications</span>
+          </label>
+          <label>
+            <input type="checkbox" value="telegramWebhookEnabled" checked />
+            <span data-i18n="configOptTelegramWebhook">Telegram Webhook notifications</span>
           </label>
           <label>
             <input type="checkbox" value="rewardTotals" />

@@ -261,6 +261,27 @@ const TRANSLATIONS = {
         webhookTestFailed: "Send failed: {error}",
         webhookCheckUrlFallback: "Please check your URL",
 
+        discordWebhookTitle: "Discord Webhook",
+        discordWebhookUrlLabel: "Discord Webhook URLs (one URL per line)",
+        saveDiscordWebhookBtn: "Save Discord",
+        testDiscordWebhookBtn: "Send Test",
+        discordWebhookEnabledStatus: "Discord Webhook enabled.",
+        discordWebhookDisabledStatus: "Discord Webhook disabled.",
+        discordWebhookSavedStatus: "Saved {count} Discord Webhook URL(s).",
+        discordWebhookSavedEmptyStatus: "Discord Webhook saved (empty list).",
+
+        telegramWebhookTitle: "Telegram Webhook",
+        telegramWebhookUrlLabel: "Telegram Webhook URLs (one URL per line)",
+        saveTelegramWebhookBtn: "Save Telegram",
+        testTelegramWebhookBtn: "Send Test",
+        telegramWebhookEnabledStatus: "Telegram Webhook enabled.",
+        telegramWebhookDisabledStatus: "Telegram Webhook disabled.",
+        telegramWebhookSavedStatus: "Saved {count} Telegram Webhook URL(s).",
+        telegramWebhookSavedEmptyStatus: "Telegram Webhook saved (empty list).",
+
+        configOptDiscordWebhook: "Discord Webhook notifications",
+        configOptTelegramWebhook: "Telegram Webhook notifications",
+
         configTitle: "Export / Import Config",
         configWarningNote: "Passwords are excluded by default. Enter a passphrase below to encrypt account passwords with AES-GCM.",
         selectAll: "Select all",
@@ -616,6 +637,27 @@ const TRANSLATIONS = {
         webhookTestSuccess: "Gửi thành công {success}/{total} webhook!",
         webhookTestFailed: "Gửi thất bại: {error}",
         webhookCheckUrlFallback: "Vui lòng kiểm tra lại URL",
+
+        discordWebhookTitle: "Discord Webhook",
+        discordWebhookUrlLabel: "URL Discord Webhook (mỗi dòng một URL)",
+        saveDiscordWebhookBtn: "Lưu Discord",
+        testDiscordWebhookBtn: "Gửi thử nghiệm",
+        discordWebhookEnabledStatus: "Đã bật Discord Webhook.",
+        discordWebhookDisabledStatus: "Đã tắt Discord Webhook.",
+        discordWebhookSavedStatus: "Đã lưu {count} URL Discord Webhook.",
+        discordWebhookSavedEmptyStatus: "Đã lưu Discord Webhook (danh sách trống).",
+
+        telegramWebhookTitle: "Telegram Webhook",
+        telegramWebhookUrlLabel: "URL Telegram Webhook (mỗi dòng một URL)",
+        saveTelegramWebhookBtn: "Lưu Telegram",
+        testTelegramWebhookBtn: "Gửi thử nghiệm",
+        telegramWebhookEnabledStatus: "Đã bật Telegram Webhook.",
+        telegramWebhookDisabledStatus: "Đã tắt Telegram Webhook.",
+        telegramWebhookSavedStatus: "Đã lưu {count} URL Telegram Webhook.",
+        telegramWebhookSavedEmptyStatus: "Đã lưu Telegram Webhook (danh sách trống).",
+
+        configOptDiscordWebhook: "Thông báo Discord Webhook",
+        configOptTelegramWebhook: "Thông báo Telegram Webhook",
 
         configTitle: "Xuất / nhập cấu hình",
         configWarningNote: "Mặc định không lưu mật khẩu. Nếu nhập mật khẩu bảo vệ bên dưới, mật khẩu tài khoản sẽ được mã hóa AES-GCM.",
@@ -1263,6 +1305,12 @@ function buildExportSettings(selectedKeys, storedSettings, currentSettings) {
     if (selectedKeys.includes("webhookEnabled") && typeof storedSettings.webhookUrl === "string") {
         settings.webhookUrl = storedSettings.webhookUrl;
     }
+    if (selectedKeys.includes("discordWebhookEnabled") && (typeof storedSettings.discordWebhookUrl === "string" || typeof currentSettings.discordWebhookUrl === "string")) {
+        settings.discordWebhookUrl = storedSettings.discordWebhookUrl ?? currentSettings.discordWebhookUrl;
+    }
+    if (selectedKeys.includes("telegramWebhookEnabled") && (typeof storedSettings.telegramWebhookUrl === "string" || typeof currentSettings.telegramWebhookUrl === "string")) {
+        settings.telegramWebhookUrl = storedSettings.telegramWebhookUrl ?? currentSettings.telegramWebhookUrl;
+    }
     if (selectedKeys.includes("autoCheckMode") && (storedSettings.utcResetDay || currentSettings.utcResetDay)) {
         settings.utcResetDay = storedSettings.utcResetDay || currentSettings.utcResetDay || "5";
     }
@@ -1284,6 +1332,10 @@ const CONFIG_SETTING_VALIDATORS = {
     lastUtcResetDate: value => typeof value === "string",
     webhookEnabled: value => typeof value === "boolean",
     webhookUrl: value => typeof value === "string",
+    discordWebhookEnabled: value => typeof value === "boolean",
+    discordWebhookUrl: value => typeof value === "string",
+    telegramWebhookEnabled: value => typeof value === "boolean",
+    telegramWebhookUrl: value => typeof value === "string",
     rewardTotals: value => Boolean(value && typeof value === "object" && !Array.isArray(value)),
     weeklyStats: value => Boolean(
         value && typeof value === "object" && !Array.isArray(value) &&

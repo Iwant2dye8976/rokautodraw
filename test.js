@@ -246,6 +246,12 @@ test("validators correctly check settings", () => {
     assert.equal(CONFIG_SETTING_VALIDATORS.webhookEnabled(false), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.webhookUrl("https://discord.com"), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.webhookUrl(123), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.discordWebhookEnabled(true), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.discordWebhookUrl("https://discord.com/api/webhooks/123/abc"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.discordWebhookUrl(123), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.telegramWebhookEnabled(false), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.telegramWebhookUrl("https://api.telegram.org/bot123/sendMessage"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.telegramWebhookUrl(null), false);
     assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals({ "200 Đá Quý": 5 }), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals([1, 2, 3]), false);
 });
@@ -289,6 +295,26 @@ test("buildExportSettings automatically bundles webhookUrl when webhookEnabled i
     const exported = buildExportSettings(selected, stored, current);
     assert.equal(exported.webhookEnabled, true);
     assert.equal(exported.webhookUrl, "https://discord.com/api/webhooks/test");
+});
+
+test("buildExportSettings bundles discordWebhookUrl and telegramWebhookUrl when selected", () => {
+    const selected = ["discordWebhookEnabled", "telegramWebhookEnabled"];
+    const stored = {
+        discordWebhookEnabled: true,
+        discordWebhookUrl: "https://discord.com/api/webhooks/test",
+        telegramWebhookEnabled: true,
+        telegramWebhookUrl: "https://api.telegram.org/bot123/sendMessage",
+    };
+    const current = {
+        discordWebhookEnabled: true,
+        telegramWebhookEnabled: true,
+    };
+
+    const exported = buildExportSettings(selected, stored, current);
+    assert.equal(exported.discordWebhookEnabled, true);
+    assert.equal(exported.discordWebhookUrl, "https://discord.com/api/webhooks/test");
+    assert.equal(exported.telegramWebhookEnabled, true);
+    assert.equal(exported.telegramWebhookUrl, "https://api.telegram.org/bot123/sendMessage");
 });
 
 test("buildExportSettings bundles utcResetDay when autoCheckMode is selected", () => {
@@ -599,6 +625,10 @@ test("popup.html defaults to lang='en', includes language controls, and all data
     assert.equal(html.includes('id="langToggleBtn"'), true, "popup.html must include #langToggleBtn");
     assert.equal(html.includes('name="languageMode"'), true, "popup.html must include languageMode radio group");
     assert.equal(html.includes('value="language"'), true, "popup.html must include language config export option");
+    assert.equal(html.includes('id="discordWebhookEnabled"'), true, "popup.html must include discordWebhookEnabled switch");
+    assert.equal(html.includes('id="telegramWebhookEnabled"'), true, "popup.html must include telegramWebhookEnabled switch");
+    assert.equal(html.includes('id="discordWebhookUrl"'), true, "popup.html must include discordWebhookUrl textarea");
+    assert.equal(html.includes('id="telegramWebhookUrl"'), true, "popup.html must include telegramWebhookUrl textarea");
 
     const attrPattern = /data-i18n(?:-(?:placeholder|title|aria-label))?="([^"]+)"/g;
     const keys = [];
