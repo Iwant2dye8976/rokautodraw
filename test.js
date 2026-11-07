@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
     STORE_CONFIG,
     STORE_NAMES,
@@ -32,6 +34,17 @@ const {
     getPreResetReloginTime,
     encryptJsonWithPassphrase,
     decryptJsonWithPassphrase,
+    POPUP_TABS,
+    normalizePopupTab,
+    SUPPORTED_LANGUAGES,
+    DEFAULT_LANGUAGE,
+    normalizeLanguage,
+    REWARDS_BY_ID,
+    getRewardNameById,
+    translateRewardName,
+    normalizeTranslatedRewards,
+    TRANSLATIONS,
+    t,
 } = require("./utils.js");
 
 // --- 1. isJwtExpired & getJwtExp ---
@@ -418,12 +431,16 @@ test("buildSingleDiscordRewardEmbed generates single embed matching template", (
     assert.equal(embed.title, "🎉 LUCKY DRAW - PLUTOMALL");
     assert.equal(embed.color, 16757578);
     assert.equal(embed.thumbnail.url, "https://example.com/avatar.png");
-    assert.deepEqual(embed.fields[0], { name: "👤 Nhân vật", value: "**DragonSlayer**", inline: true });
+    assert.deepEqual(embed.fields[0], { name: "👤 Character", value: "**DragonSlayer**", inline: true });
     assert.deepEqual(embed.fields[1], { name: "🆔 Character ID", value: "123456789", inline: true });
     assert.equal(embed.fields[2].value.includes("**[Legendary Chest](https://example.com/chest.png) x5**"), true);
     assert.equal(embed.image.url, "https://example.com/chest.png");
     assert.equal(embed.footer.text, "Plutomall • Lucky Draw System");
     assert.equal(typeof embed.timestamp, "string");
+
+    const embedVi = buildSingleDiscordRewardEmbed("Plutomall", role, { "200 Gems": 1 }, {}, "vi");
+    assert.deepEqual(embedVi.fields[0], { name: "👤 Nhân vật", value: "**DragonSlayer**", inline: true });
+    assert.equal(embedVi.fields[2].value, "**200 Đá Quý x1**");
 });
 
 // --- 20. Feature #2: filterRolesForDraw ---
@@ -503,7 +520,161 @@ test("encryptJsonWithPassphrase and decryptJsonWithPassphrase round-trip and rej
 
     await assert.rejects(
         () => decryptJsonWithPassphrase(encrypted, "wrong-passphrase"),
+        /Incorrect decryption passphrase/
+    );
+    await assert.rejects(
+        () => decryptJsonWithPassphrase(encrypted, "wrong-passphrase", "vi"),
         /Mật khẩu giải mã không đúng/
     );
 });
+
+// --- 24. Popup Tab Navigation Normalization ---
+test("normalizePopupTab validates 4-tab layout ids and defaults to draw", () => {
+    assert.deepEqual(POPUP_TABS, ["draw", "analytics", "automation", "system"]);
+    for (const tab of POPUP_TABS) {
+        assert.equal(normalizePopupTab(tab), tab);
+    }
+    assert.equal(normalizePopupTab("unknown"), "draw");
+    assert.equal(normalizePopupTab(""), "draw");
+    assert.equal(normalizePopupTab(null), "draw");
+    assert.equal(normalizePopupTab(undefined), "draw");
+});
+
+// --- 25. i18n helpers & bilingual reward compatibility ---
+test("normalizeLanguage, t(), and TRANSLATIONS maintain en/vi parity and parameter interpolation", () => {
+    assert.deepEqual(SUPPORTED_LANGUAGES, ["en", "vi"]);
+    assert.equal(DEFAULT_LANGUAGE, "en");
+    assert.equal(normalizeLanguage("vi"), "vi");
+    assert.equal(normalizeLanguage("en"), "en");
+    assert.equal(normalizeLanguage("fr"), "en");
+    assert.equal(normalizeLanguage(null), "en");
+
+    const enKeys = Object.keys(TRANSLATIONS.en).sort();
+    const viKeys = Object.keys(TRANSLATIONS.vi).sort();
+    assert.deepEqual(enKeys, viKeys, "en and vi dictionaries must have identical keys");
+
+    assert.equal(t("drawsRemaining", { count: 0 }, "en"), "0 draws left");
+    assert.equal(t("drawsRemaining", { count: 0 }, "vi"), "0 lượt còn lại");
+    assert.equal(t("unknown.key.test", {}, "fr"), "unknown.key.test");
+});
+
+test("translateRewardName, normalizeTranslatedRewards, and getRewardPoints handle both English and Vietnamese rewards", () => {
+    assert.equal(getRewardPoints("2,000 Gems"), 2000);
+    assert.equal(getRewardPoints("2.000 Đá Quý"), 2000);
+    assert.equal(getRewardPoints("24-Hour Speedup"), 1500);
+    assert.equal(getRewardPoints("Equipment Material Choice Chest"), 1400);
+    assert.equal(getRewardPoints("8-Hour Speedup"), 600);
+    assert.equal(getRewardPoints("500 Gems"), 500);
+    assert.equal(getRewardPoints("3-Hour Speedup"), 300);
+    assert.equal(getRewardPoints("200 Gems"), 200);
+
+    assert.equal(getRewardNameById("1986632021321089024", "en"), "200 Gems");
+    assert.equal(getRewardNameById("1986632021321089024", "vi"), "200 Đá Quý");
+    assert.equal(getRewardNameById("nonexistent", "en"), null);
+
+    assert.equal(translateRewardName("200 Đá Quý", "en"), "200 Gems");
+    assert.equal(translateRewardName("200 Gems", "vi"), "200 Đá Quý");
+    assert.equal(translateRewardName("Phần thưởng 999", "en"), "Reward 999");
+    assert.equal(translateRewardName("Reward 999", "vi"), "Phần thưởng 999");
+
+    const mixed = { "200 Đá Quý": 3, "200 Gems": 2, "Tăng tốc 3 giờ": 1 };
+    assert.deepEqual(normalizeTranslatedRewards(mixed, "en"), {
+        "200 Gems": 5,
+        "3-Hour Speedup": 1,
+    });
+    assert.deepEqual(normalizeTranslatedRewards(mixed, "vi"), {
+        "200 Đá Quý": 5,
+        "Tăng tốc 3 giờ": 1,
+    });
+
+    assert.equal(CONFIG_SETTING_VALIDATORS.language("en"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.language("vi"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.language("de"), false);
+});
+
+// --- 26. popup.html English default and data-i18n key coverage ---
+test("popup.html defaults to lang='en', includes language controls, and all data-i18n* keys exist in TRANSLATIONS", () => {
+    const html = fs.readFileSync(path.join(__dirname, "popup.html"), "utf8");
+    assert.equal(/<html\s+lang="en">/i.test(html), true, "popup.html must default to lang='en'");
+    assert.equal(html.includes('id="langToggleBtn"'), true, "popup.html must include #langToggleBtn");
+    assert.equal(html.includes('name="languageMode"'), true, "popup.html must include languageMode radio group");
+    assert.equal(html.includes('value="language"'), true, "popup.html must include language config export option");
+
+    const attrPattern = /data-i18n(?:-(?:placeholder|title|aria-label))?="([^"]+)"/g;
+    const keys = [];
+    let match;
+    while ((match = attrPattern.exec(html)) !== null) {
+        keys.push(match[1]);
+    }
+    assert.equal(keys.length > 40, true, "popup.html must annotate translatable elements with data-i18n*");
+    for (const key of keys) {
+        assert.equal(
+            Object.prototype.hasOwnProperty.call(TRANSLATIONS.en, key),
+            true,
+            `Missing key in TRANSLATIONS.en: ${key}`
+        );
+        assert.equal(
+            Object.prototype.hasOwnProperty.call(TRANSLATIONS.vi, key),
+            true,
+            `Missing key in TRANSLATIONS.vi: ${key}`
+        );
+    }
+});
+
+// --- 27. popup.js i18n key coverage and localization ---
+test("popup.js uses tr() for all strings and every tr() key exists in TRANSLATIONS", () => {
+    const popupJs = fs.readFileSync(path.join(__dirname, "popup.js"), "utf8");
+    assert.equal(popupJs.includes("function applyLanguage("), true, "popup.js must define applyLanguage");
+    assert.equal(popupJs.includes("function tr("), true, "popup.js must define tr()");
+
+    const trPattern = /\btr\(\s*"([^"]+)"/g;
+    const keys = [];
+    let match;
+    while ((match = trPattern.exec(popupJs)) !== null) {
+        keys.push(match[1]);
+    }
+    assert.equal(keys.length > 50, true, "popup.js must use tr() across UI actions and statuses");
+    for (const key of keys) {
+        assert.equal(
+            Object.prototype.hasOwnProperty.call(TRANSLATIONS.en, key),
+            true,
+            `Missing popup.js tr() key in TRANSLATIONS.en: ${key}`
+        );
+        assert.equal(
+            Object.prototype.hasOwnProperty.call(TRANSLATIONS.vi, key),
+            true,
+            `Missing popup.js tr() key in TRANSLATIONS.vi: ${key}`
+        );
+    }
+});
+
+// --- 28. background.js, relogin.js, and content.js i18n coverage ---
+test("background.js defines getLanguage() and uses valid t() keys", () => {
+    const bgJs = fs.readFileSync(path.join(__dirname, "background.js"), "utf8");
+    assert.equal(bgJs.includes("async function getLanguage("), true, "background.js must define async function getLanguage");
+
+    const tPattern = /\bt\(\s*"([^"]+)"/g;
+    const keys = [];
+    let match;
+    while ((match = tPattern.exec(bgJs)) !== null) {
+        keys.push(match[1]);
+    }
+    assert.equal(keys.length > 20, true, "background.js must use t() for localized notifications, logs, and statuses");
+    for (const key of keys) {
+        assert.equal(
+            Object.prototype.hasOwnProperty.call(TRANSLATIONS.en, key),
+            true,
+            `Missing background.js t() key in TRANSLATIONS.en: ${key}`
+        );
+        assert.equal(
+            Object.prototype.hasOwnProperty.call(TRANSLATIONS.vi, key),
+            true,
+            `Missing background.js t() key in TRANSLATIONS.vi: ${key}`
+        );
+    }
+});
+
+
+
+
 

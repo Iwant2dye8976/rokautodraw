@@ -26,7 +26,7 @@
     const csrfInput = await waitForElement("input#_csrf");
     const surveyCsrf = csrfInput?.value;
     if (!surveyCsrf) {
-        console.warn("[LilithDraw] Không tìm thấy CSRF token cho khảo sát");
+        console.warn("[LilithDraw] Could not find CSRF token for survey");
         return;
     }
     const params = Object.fromEntries(new URL(location.href).searchParams.entries());
@@ -34,9 +34,9 @@
         { type: "surveyCsrf", csrf: surveyCsrf, params },
         response => {
             if (chrome.runtime.lastError) {
-                console.error("[LilithDraw] Không gửi được yêu cầu khảo sát:", chrome.runtime.lastError.message);
+                console.error("[LilithDraw] Could not send survey request:", chrome.runtime.lastError.message);
             } else if (response?.error) {
-                console.error("[LilithDraw] Gửi khảo sát thất bại:", response.error);
+                console.error("[LilithDraw] Survey submission failed:", response.error);
             }
         }
     );

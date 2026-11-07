@@ -88,7 +88,7 @@ function setInputValue(input, value) {
         HTMLInputElement.prototype,
         "value"
     )?.set;
-    if (!setter) throw new Error("Không thể điền thông tin đăng nhập");
+    if (!setter) throw new Error("Could not set login credentials");
     setter.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -115,7 +115,7 @@ async function waitForStoreRedirectOrError(mall, passwordPanel, timeoutMs = 2000
     }
     return {
         redirected: false,
-        error: `Passport chưa chuyển về ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"} sau khi gửi đăng nhập.`
+        error: `Passport did not redirect to ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"} after submitting login.`
     };
 }
 
@@ -143,7 +143,7 @@ function reportFinished(success, error) {
                 response => {
                     if (chrome.runtime.lastError) {
                         reject(new Error(chrome.runtime.lastError.message));
-                    } else if (response?.error === "Không có phiên tự đăng nhập hợp lệ") {
+                    } else if (response?.error === "Không có phiên tự đăng nhập hợp lệ" || response?.error === "No valid auto-relogin session") {
                         resolve(null);
                     } else if (response?.error) {
                         reject(new Error(response.error));
@@ -158,19 +158,19 @@ function reportFinished(success, error) {
         mall = credentials.mall;
         const config = STORE_CONFIG[mall];
         if (!config || location.origin !== config.passportOrigin) {
-            throw new Error("Trang đăng nhập không khớp với cửa hàng đang xử lý.");
+            throw new Error("Login page does not match store being processed.");
         }
         if (!credentials.username || !credentials.password) {
-            throw new Error(`Thiếu tài khoản hoặc mật khẩu ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"}`);
+            throw new Error(`Missing username or password for ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"}`);
         }
 
         const passwordTab = await waitForElement(findPasswordTab);
-        if (!passwordTab) throw new Error("Không tìm thấy tab đăng nhập bằng mật khẩu trên passport.");
+        if (!passwordTab) throw new Error("Could not find password login tab on passport.");
         checkAndSkipTour();
         passwordTab.click();
 
         const passwordPanel = await waitForElement(findPasswordPanel);
-        if (!passwordPanel) throw new Error("Tab mật khẩu đã chọn nhưng form chưa xuất hiện.");
+        if (!passwordPanel) throw new Error("Password tab selected but form did not appear.");
         const username = await waitForElement(() =>
             passwordPanel.querySelector('#plogin_username') ||
             passwordPanel.querySelector('#plogin_account') ||
@@ -184,13 +184,13 @@ function reportFinished(success, error) {
             passwordPanel.querySelector('input[type="text"]')
         );
         const password = passwordPanel.querySelector(PASSWORD_INPUT_SELECTOR);
-        if (!username || !password) throw new Error("Không tìm thấy ô email hoặc mật khẩu trên passport.");
+        if (!username || !password) throw new Error("Could not find email or password input on passport.");
 
         const termsCheckbox = passwordPanel.querySelector('input[type="checkbox"]');
-        if (!termsCheckbox) throw new Error("Không tìm thấy ô đồng ý điều khoản.");
+        if (!termsCheckbox) throw new Error("Could not find terms agreement checkbox.");
         if (!termsCheckbox.checked) {
             const termsLabel = termsCheckbox.closest("label");
-            if (!termsLabel) throw new Error("Không tìm thấy nhãn ô đồng ý điều khoản.");
+            if (!termsLabel) throw new Error("Could not find terms agreement checkbox label.");
             termsLabel.click();
         }
 
@@ -198,7 +198,7 @@ function reportFinished(success, error) {
         setInputValue(password, credentials.password);
 
         const submit = passwordPanel.querySelector('button[type="submit"]');
-        if (!submit) throw new Error("Không tìm thấy nút đăng nhập trong tab mật khẩu.");
+        if (!submit) throw new Error("Could not find submit button in password tab.");
         await delay(600);
         submit.click();
         const outcome = await waitForStoreRedirectOrError(mall, passwordPanel);

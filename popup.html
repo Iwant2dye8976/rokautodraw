@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8" />
@@ -9,89 +9,95 @@
 </head>
 
 <body>
-  <!-- Top Navigation Header -->
+  <!-- Sticky Top Context Header -->
   <header class="g-nav">
-    <div class="brand-group">
-      <!-- <svg class="brand-mark" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-        <path
-          d="M11 2h2v7.5l5.3-5.3 1.4 1.4-5.3 5.3H22v2h-7.6l5.3 5.3-1.4 1.4-5.3-5.3V22h-2v-7.6l-5.3 5.3-1.4-1.4 5.3-5.3H2v-2h7.6L4.3 5.7l1.4-1.4 5.3 5.3V2z" />
-      </svg> -->
-      <span class="g-nav-brand">ROK Weekly Auto</span>
+    <div class="g-nav-top">
+      <div class="brand-group">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <span class="g-nav-brand">ROK Weekly Auto</span>
+      </div>
+      <div class="g-nav-controls">
+        <div class="segmented-control store-segmented" role="radiogroup" aria-label="Select store"
+          data-i18n-aria-label="storeSelectAria">
+          <label class="segmented-item">
+            <input type="radio" name="store" value="plutomall" checked />
+            <span>Plutomall</span>
+          </label>
+          <label class="segmented-item">
+            <input type="radio" name="store" value="lilithstore" />
+            <span>Lilith</span>
+          </label>
+        </div>
+        <button class="lang-toggle-btn" id="langToggleBtn" type="button" aria-label="Switch language to Tiếng Việt"
+          title="Switch language to Tiếng Việt" data-i18n-title="switchLangTitle"
+          data-i18n-aria-label="switchLangTitle">EN</button>
+        <button class="theme-toggle-btn" id="themeToggleBtn" type="button" aria-label="Switch to dark mode"
+          title="Switch to dark mode">
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="14" height="14" fill="none"
+            stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+          </svg>
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="14" height="14" fill="none"
+            stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        </button>
+      </div>
     </div>
-    <button class="theme-toggle-btn" id="themeToggleBtn" type="button" aria-label="Chuyển sang chế độ tối"
-      title="Chuyển sang chế độ tối">
-      <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="14" height="14" fill="none"
-        stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="4" />
-        <path
-          d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-      </svg>
-      <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="14" height="14" fill="none"
-        stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-      </svg>
-    </button>
+
+    <div class="g-nav-context" id="headerContextBar">
+      <div class="account-picker">
+        <label for="activeAccountSelect" class="sr-only" data-i18n="accountLabel">Account</label>
+        <div class="select-wrapper">
+          <select id="activeAccountSelect" aria-label="Selected account"
+            data-i18n-aria-label="activeAccountAria"></select>
+          <svg class="select-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+            stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </div>
+      </div>
+      <div class="context-actions">
+        <button class="btn-icon-util" id="captureBtn" type="button" title="Open store to capture token"
+          aria-label="Get Token" data-i18n-title="captureBtnTitle" data-i18n-aria-label="captureBtn">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.65"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="5.5" cy="10.5" r="3" />
+            <path d="M7.8 8.2L13.5 2.5M11.5 4.5l2 2" />
+          </svg>
+          <span data-i18n="captureBtn">Get Token</span>
+        </button>
+        <button class="btn-icon-util btn-icon-only" id="refreshCharsBtn" type="button" title="Refresh character list"
+          aria-label="Refresh" data-i18n-title="refreshCharsTitle" data-i18n-aria-label="refreshCharsAria">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.65"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
+            <path d="M2 2v4h4" />
+          </svg>
+        </button>
+      </div>
+    </div>
   </header>
 
   <main id="main">
-    <!-- 1. Primary Action Card -->
-    <section class="card action-card" aria-label="Thao tác chính">
-      <div class="card-head">
-        <div class="eyebrow-row">
-          <span class="eyebrow">Cửa hàng</span>
-          <div class="segmented-control" role="radiogroup" aria-label="Chọn cửa hàng">
-            <label class="segmented-item">
-              <input type="radio" name="store" value="plutomall" checked />
-              <span>Plutomall</span>
-            </label>
-            <label class="segmented-item">
-              <input type="radio" name="store" value="lilithstore" />
-              <span>Lilith Store</span>
-            </label>
-          </div>
+    <!-- TAB 1: DRAW DECK (DEFAULT) -->
+    <section class="tab-panel" id="tabPanelDraw" data-tab-panel="draw" role="tabpanel" aria-labelledby="navTabDraw">
+      <!-- Hero Draw Strip -->
+      <div class="hero-draw-strip" aria-label="Lucky draw actions" data-i18n-aria-label="heroDrawAria">
+        <div class="hero-metrics-row">
+          <span class="draws-remaining" id="drawsRemaining" data-i18n="drawsRemainingPlaceholder">- draws left</span>
+          <span class="token-state-badge" id="heroTokenBadge" data-i18n="noToken">No token</span>
         </div>
-        <div class="account-picker">
-          <label for="activeAccountSelect" class="input-label">Tài khoản</label>
-          <div class="select-wrapper">
-            <select id="activeAccountSelect"></select>
-            <svg class="select-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
-              stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </div>
+        <div class="hero-action-row">
+          <button class="btn-pill" id="drawNowBtn" type="button" data-i18n="drawNowBtn">Draw this account</button>
+          <button class="btn-pill-outline" id="drawAllBtn" type="button" data-i18n="drawAllBtn">Draw all</button>
         </div>
       </div>
-      <div class="card-body">
-        <div class="btn-row">
-          <button class="btn-util" id="captureBtn" type="button">
-            <span>Lấy Token</span>
-          </button>
-          <button class="btn-util" id="refreshCharsBtn" type="button">
-            <span>Làm mới</span>
-          </button>
-        </div>
-        <div class="btn-row hero-action-row">
-          <button class="btn-pill" id="drawNowBtn" type="button">Quay tài khoản này</button>
-          <button class="btn-pill-outline" id="drawAllBtn" type="button">Quay tất cả tài khoản</button>
-        </div>
-      </div>
-    </section>
 
-    <!-- 2. Characters Card -->
-    <section class="card characters-card" aria-label="Danh sách nhân vật">
-      <div class="card-head">
-        <div class="eyebrow-row">
-          <span class="eyebrow">Nhân vật</span>
-          <span class="draws-remaining" id="drawsRemaining">- lượt còn lại</span>
-        </div>
-        <div class="char-filter-row">
-          <span class="input-label">Chỉ quay nhân vật yêu thích</span>
-          <label class="switch-toggle" for="drawFavoritesOnly">
-            <span class="settings-toggle-label" id="drawFavoritesOnlyLabel">Tắt</span>
-            <input id="drawFavoritesOnly" type="checkbox" role="switch" />
-            <span class="switch-track" aria-hidden="true"></span>
-          </label>
-        </div>
+      <!-- 1-Line Roster Toolbar: Search + Favorites Filter Chip -->
+      <div class="roster-toolbar" aria-label="Character filters" data-i18n-aria-label="rosterFilterAria">
         <div class="char-search-wrap">
           <span class="char-search-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -100,396 +106,504 @@
               <path d="M10 10l4 4" />
             </svg>
           </span>
-          <input type="text" id="charSearchInput" class="char-search-input" placeholder="Tìm theo tên, ID hoặc server…"
-            autocomplete="off" spellcheck="false" aria-label="Tìm kiếm nhân vật" />
-          <button type="button" id="clearCharSearchBtn" class="char-search-clear" aria-label="Xóa tìm kiếm"
-            title="Xóa tìm kiếm" hidden>
+          <input type="text" id="charSearchInput" class="char-search-input" placeholder="Search name, ID, or server…"
+            autocomplete="off" spellcheck="false" aria-label="Search characters"
+            data-i18n-placeholder="charSearchPlaceholder" data-i18n-aria-label="charSearchAria" />
+          <button type="button" id="clearCharSearchBtn" class="char-search-clear" aria-label="Clear search"
+            title="Clear search" data-i18n-title="clearSearchAria" data-i18n-aria-label="clearSearchAria" hidden>
             <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
           </button>
         </div>
+
+        <label class="fav-filter-chip" for="drawFavoritesOnly" title="Only draw favorite characters"
+          data-i18n-title="favFilterTitle">
+          <input id="drawFavoritesOnly" type="checkbox" role="switch" />
+          <svg class="fav-chip-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor"
+            stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="8 1.5 10.2 5.8 15 6.5 11.5 9.9 12.3 14.5 8 12.2 3.7 14.5 4.5 9.9 1 6.5 5.8 5.8 8 1.5" />
+          </svg>
+          <span data-i18n="favFilterLabel">Favorites</span>
+          <span class="sr-only" id="drawFavoritesOnlyLabel" data-i18n="toggleOff">Off</span>
+        </label>
       </div>
-      <div class="card-body">
-        <div class="char-list-inner" id="charList">
-          <div class="char-row char-initial-state">
-            <span class="badge badge-warn">Chưa có token</span>
-          </div>
+
+      <!-- Flat Hairline Character List -->
+      <div class="char-list-inner" id="charList" aria-label="Character list" data-i18n-aria-label="charListAria">
+        <div class="char-row char-initial-state">
+          <span class="badge badge-warn" data-i18n="noToken">No token</span>
         </div>
       </div>
     </section>
 
-    <!-- 3. Additional Settings Collapsible Card -->
-    <section class="card additional-settings" aria-labelledby="additionalSettingsTitle">
-      <div class="card-head additional-settings-head" id="additionalSettingsHead">
-        <span class="eyebrow" id="additionalSettingsTitle">Cài đặt mở rộng</span>
-        <button class="settings-disclosure" id="additionalSettingsDisclosure" type="button"
-          title="Mở rộng Cài đặt mở rộng" aria-label="Mở rộng Cài đặt mở rộng" aria-expanded="false"
-          aria-controls="additionalSettingsBody">
-          <svg class="disclosure-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
-            stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3.5 6l4.5 4.5 4.5-4.5" />
-          </svg>
-        </button>
-      </div>
-      <div class="card-body additional-settings-body" id="additionalSettingsBody" hidden>
-        <!-- Auto Check Section -->
-        <section class="settings-section" aria-labelledby="autoCheckTitle">
-          <div class="settings-section-head">
-            <h3 class="settings-section-title" id="autoCheckTitle">Auto kiểm tra</h3>
-            <label class="switch-toggle" for="autoCheckEnabled">
-              <span class="settings-toggle-label" id="autoCheckToggleLabel">Bật</span>
-              <input id="autoCheckEnabled" type="checkbox" role="switch" />
-              <span class="switch-track" aria-hidden="true"></span>
-            </label>
-          </div>
-          <div class="settings-section-content" id="autoCheckSettings">
-            <div class="segmented-control auto-check-segmented" role="radiogroup" aria-label="Chọn chế độ kiểm tra" style="margin-top: 6px;">
-              <label class="segmented-item">
-                <input type="radio" name="autoCheckMode" value="utcReset" checked />
-                <span>Theo giờ reset UTC</span>
-              </label>
-              <label class="segmented-item">
-                <input type="radio" name="autoCheckMode" value="interval" />
-                <span>Định kỳ tùy chỉnh</span>
-              </label>
-            </div>
-
-            <!-- Panel 1: UTC Reset Check -->
-            <div id="utcResetPanel" class="auto-check-panel" style="margin-top: 8px;">
-              <label class="login-field" for="utcResetDaySelect" style="margin-top: 0;">
-                <span class="input-label">Mục tiêu ngày reset</span>
-                <div class="select-wrapper">
-                  <select id="utcResetDaySelect">
-                    <option value="5" selected>Thứ Sáu (Reset sự kiện RoK)</option>
-                    <option value="everyday">Mỗi ngày (Daily 00:05 UTC)</option>
-                    <option value="1">Thứ Hai hàng tuần</option>
-                    <option value="0">Chủ Nhật hàng tuần</option>
-                  </select>
-                  <svg class="select-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
-                    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M4 6l4 4 4-4" />
-                  </svg>
-                </div>
-              </label>
-              <p class="login-note" style="margin-top: 4px; font-size: 11px;">
-                Chạy lúc 00:05 UTC. Tự động bù lượt quay nếu mở trình duyệt muộn sau 00:05 UTC ngày reset.
-              </p>
-            </div>
-
-            <!-- Panel 2: Custom Interval Check -->
-            <div id="intervalPanel" class="auto-check-panel" style="margin-top: 8px;" hidden>
-              <label class="login-field auto-check-interval" style="margin-top: 0;">
-                <span>Thời gian giữa mỗi lần kiểm tra (phút)</span>
-                <input id="autoCheckIntervalMinutes" type="number" min="1" step="1" inputmode="numeric" />
-              </label>
-              <div class="interval-presets" role="group" aria-label="Thời gian kiểm tra có sẵn">
-                <div class="interval-preset-chips">
-                  <button type="button" class="preset-chip" data-minutes="60"
-                    title="1 giờ (60 phút - 24 lần/ngày)">1h</button>
-                  <button type="button" class="preset-chip" data-minutes="120"
-                    title="2 giờ (120 phút - 12 lần/ngày)">2h</button>
-                  <button type="button" class="preset-chip" data-minutes="180"
-                    title="3 giờ (180 phút - 8 lần/ngày)">3h</button>
-                  <button type="button" class="preset-chip" data-minutes="240"
-                    title="4 giờ (240 phút - 6 lần/ngày)">4h</button>
-                  <button type="button" class="preset-chip" data-minutes="360"
-                    title="6 giờ (360 phút - 4 lần/ngày)">6h</button>
-                  <button type="button" class="preset-chip" data-minutes="480"
-                    title="8 giờ (480 phút - 3 lần/ngày)">8h</button>
-                  <button type="button" class="preset-chip" data-minutes="720"
-                    title="12 giờ (720 phút - 2 lần/ngày)">12h</button>
-                  <button type="button" class="preset-chip" data-minutes="1440"
-                    title="24 giờ (1440 phút - 1 lần/ngày)">24h</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="login-settings-status" id="autoCheckSettingsStatus" role="status" aria-live="polite"></div>
-          </div>
-        </section>
-
-        <!-- Auto Relogin Section -->
-        <section class="settings-section" aria-labelledby="autoReloginTitle">
-          <div class="settings-section-head">
-            <h3 class="settings-section-title" id="autoReloginTitle">Auto đăng nhập lại</h3>
-            <label class="switch-toggle" for="autoReloginEnabled">
-              <span class="settings-toggle-label" id="autoReloginToggleLabel">Bật</span>
-              <input id="autoReloginEnabled" type="checkbox" role="switch" />
-              <span class="switch-track" aria-hidden="true"></span>
-            </label>
-          </div>
-          <div class="settings-section-content" id="autoReloginSettings">
-            <div class="login-tabs" role="tablist" aria-label="Cấu hình đăng nhập cửa hàng">
-              <button class="login-tab active" id="loginTabPluto" type="button" role="tab" aria-selected="true"
-                aria-controls="loginPanelPluto" data-login-tab="plutomall">
-                Plutomall
-              </button>
-              <button class="login-tab" id="loginTabLilith" type="button" role="tab" aria-selected="false"
-                aria-controls="loginPanelLilith" data-login-tab="lilithstore">
-                Lilith Store
-              </button>
-            </div>
-            <section class="login-panel" id="loginPanelLilith" role="tabpanel" aria-labelledby="loginTabLilith" hidden>
-              <div class="saved-accounts" id="lilithstoreAccounts"></div>
-              <button class="btn-util add-account-btn" data-add-account="lilithstore" type="button">
-                + Thêm tài khoản
-              </button>
-            </section>
-            <section class="login-panel" id="loginPanelPluto" role="tabpanel" aria-labelledby="loginTabPluto">
-              <div class="saved-accounts" id="plutomallAccounts"></div>
-              <button class="btn-util add-account-btn" data-add-account="plutomall" type="button">
-                + Thêm tài khoản
-              </button>
-              <p class="login-note">
-                Mỗi tài khoản có token và dữ liệu quay thưởng riêng.
-              </p>
-            </section>
-            <p class="login-note">
-              Thông tin đăng nhập được lưu trên thiết bị cho đến khi bạn xóa.
-              Tự động kiểm tra sẽ xử lý tuần tự các tài khoản đã lưu.
-            </p>
-            <div class="btn-row login-actions">
-              <button class="btn-util btn-primary-outline" id="saveLoginBtn" type="button">
-                Lưu thông tin
-              </button>
-              <button class="btn-util btn-destructive-subtle" id="clearLoginBtn" type="button">
-                Xóa tất cả tài khoản
-              </button>
-            </div>
-            <div class="btn-row">
-              <button class="btn-util" id="testPlutoAccountsBtn" type="button">
-                Check lần lượt Plutomall
-              </button>
-              <button class="btn-util" id="testLilithAccountsBtn" type="button">
-                Check lần lượt Lilith
-              </button>
-            </div>
-            <div class="btn-row">
-              <button class="btn-util" id="testPlutoReloginBtn" type="button">
-                <svg class="util-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
-                  stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
-                  <path d="M2 2v4h4" />
-                </svg>
-                <span>Pluto</span>
-              </button>
-              <button class="btn-util" id="testLilithReloginBtn" type="button">
-                <svg class="util-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
-                  stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
-                  <path d="M2 2v4h4" />
-                </svg>
-                <span>Lilith</span>
-              </button>
-            </div>
-            <div class="login-settings-status" id="loginSettingsStatus" role="status" aria-live="polite"></div>
-          </div>
-        </section>
-
-        <!-- Webhook Notification Section -->
-        <section class="settings-section" aria-labelledby="webhookTitle">
-          <div class="settings-section-head">
-            <h3 class="settings-section-title" id="webhookTitle">Thông báo Webhook</h3>
-            <label class="switch-toggle" for="webhookEnabled">
-              <span class="settings-toggle-label" id="webhookToggleLabel">Tắt</span>
-              <input id="webhookEnabled" type="checkbox" role="switch" />
-              <span class="switch-track" aria-hidden="true"></span>
-            </label>
-          </div>
-          <div class="settings-section-content" id="webhookSettings">
-            <label class="login-field" for="webhookUrl">
-              <span class="input-label">URL Webhook (mỗi dòng một URL)</span>
-              <textarea id="webhookUrl" rows="3" placeholder="https://discord.com/api/webhooks/...&#10;https://api.telegram.org/bot..." autocomplete="off" spellcheck="false"></textarea>
-            </label>
-            <div class="btn-row webhook-actions">
-              <button class="btn-util btn-primary-outline" id="saveWebhookBtn" type="button">Lưu Webhook</button>
-              <button class="btn-util" id="testWebhookBtn" type="button">Gửi thử nghiệm</button>
-            </div>
-            <div class="login-settings-status" id="webhookSettingsStatus" role="status" aria-live="polite"></div>
-            <div class="webhook-guide">
-              <div class="webhook-guide-title">Định dạng webhook hỗ trợ:</div>
-              <div class="webhook-guide-item">
-                <span class="webhook-guide-badge">Discord</span>
-                <code>https://discord.com/api/webhooks/ID/TOKEN</code>
-              </div>
-              <div class="webhook-guide-item">
-                <span class="webhook-guide-badge">Telegram</span>
-                <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;</code>
-              </div>
-              <div class="webhook-guide-note">
-                • Mỗi dòng một URL. Có thể cấu hình nhiều webhook cùng lúc.<br>
-                • <strong>Telegram</strong>: Hãy gửi tin nhắn <code>/start</code> cho bot trước khi thử nghiệm.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Theme Mode Section -->
-        <section class="settings-section" aria-labelledby="themeTitle">
-          <div class="settings-section-head">
-            <h3 class="settings-section-title" id="themeTitle">Chế độ giao diện</h3>
-            <span class="settings-toggle-label" id="currentThemeLabel">Sáng</span>
-          </div>
-          <div class="segmented-control theme-segmented" role="radiogroup" aria-label="Chọn chế độ giao diện">
+    <!-- TAB 2: ANALYTICS & LEADERBOARD -->
+    <section class="tab-panel" id="tabPanelAnalytics" data-tab-panel="analytics" role="tabpanel"
+      aria-labelledby="navTabAnalytics" hidden>
+      <section class="settings-section analytics-section" aria-labelledby="rewardSummaryTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="rewardSummaryTitle" data-i18n="rewardSummaryTitle">Reward Statistics</h2>
+          <div class="segmented-control" role="radiogroup" aria-label="Statistics scope"
+            data-i18n-aria-label="statsScopeAria">
             <label class="segmented-item">
-              <input type="radio" name="themeMode" value="system" />
-              <span>Hệ thống</span>
+              <input type="radio" name="rewardStatsMode" value="weekly" checked />
+              <span data-i18n="statsWeekly">This Week</span>
             </label>
             <label class="segmented-item">
-              <input type="radio" name="themeMode" value="light" checked />
-              <span>Sáng</span>
-            </label>
-            <label class="segmented-item">
-              <input type="radio" name="themeMode" value="dark" />
-              <span>Tối</span>
+              <input type="radio" name="rewardStatsMode" value="allTime" />
+              <span data-i18n="statsAllTime">All Time</span>
             </label>
           </div>
-        </section>
+        </div>
 
-        <!-- Reward Summary Section -->
-        <section class="settings-section" aria-labelledby="rewardSummaryTitle">
-          <div class="settings-section-head">
-            <h3 class="settings-section-title" id="rewardSummaryTitle">Thống kê phần thưởng</h3>
-            <div class="segmented-control" role="radiogroup" aria-label="Phạm vi thống kê">
-              <label class="segmented-item">
-                <input type="radio" name="rewardStatsMode" value="weekly" checked />
-                <span>Tuần này</span>
-              </label>
-              <label class="segmented-item">
-                <input type="radio" name="rewardStatsMode" value="allTime" />
-                <span>Tất cả</span>
-              </label>
-            </div>
-          </div>
-          <div id="rewardTotalsList" class="reward-totals-list">
-            <div class="login-note">Chưa có thống kê phần thưởng nào.</div>
-          </div>
-          <div id="weeklyLeaderboardWrap" class="leaderboard-wrap">
-            <div class="leaderboard-title">Bảng xếp hạng nhân phẩm tuần này</div>
-            <div id="weeklyLeaderboardList" class="leaderboard-list">
-              <div class="login-note">Chưa có dữ liệu nhân phẩm tuần này.</div>
-            </div>
-          </div>
-          <div class="btn-row">
-            <button class="btn-util" id="exportRewardsCsvBtn" type="button">
-              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" />
-              </svg>
-              <span>Xuất CSV</span>
-            </button>
-            <button class="btn-util btn-destructive-subtle" id="clearRewardsBtn" type="button">Xóa thống kê</button>
-          </div>
-        </section>
+        <div id="rewardTotalsList" class="reward-totals-list">
+          <div class="login-note" data-i18n="noRewardsAllTime">No reward statistics yet.</div>
+        </div>
 
-        <!-- Export / Import Config Section -->
-        <section class="settings-section" aria-labelledby="configTitle">
-          <h3 class="settings-section-title" id="configTitle">Xuất/nhập cấu hình</h3>
-          <p class="login-note config-warning">
-            Mặc định không lưu mật khẩu. Nếu nhập mật khẩu bảo vệ bên dưới, mật khẩu tài khoản sẽ được mã hóa AES-GCM trong file xuất.
-          </p>
-          <div class="config-selection-actions">
-            <button class="btn-util" id="toggleAllConfigBtn" type="button">
-              <svg class="config-selection-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                <rect x="2.5" y="2.5" width="15" height="15" rx="3" />
-                <path d="m6.5 10 2.3 2.3 4.8-4.8" />
-              </svg>
-              <span id="toggleAllConfigLabel">Chọn tất cả</span>
-            </button>
-            <span class="config-selection-count" id="configSelectionCount"></span>
+        <div id="weeklyLeaderboardWrap" class="leaderboard-wrap">
+          <div class="leaderboard-head-row">
+            <span class="leaderboard-title" data-i18n="leaderboardTitle">Weekly Luck Leaderboard</span>
+            <span class="leaderboard-meta" data-i18n="leaderboardMeta">Resets Friday 00:05 UTC</span>
           </div>
-          <div class="config-options" aria-label="Chọn cài đặt cần xuất">
-            <label>
-              <input type="checkbox" value="drawFavoritesOnly" checked />
-              <span>Chỉ quay nhân vật yêu thích</span>
-            </label>
-            <label>
-              <input type="checkbox" value="autoReloginEnabled" checked />
-              <span>Auto đăng nhập lại</span>
-            </label>
-            <label>
-              <input type="checkbox" value="autoCheckIntervalMinutes" checked />
-              <span>Thời gian Auto kiểm tra</span>
-            </label>
-            <label>
-              <input type="checkbox" value="autoCheckEnabled" checked />
-              <span>Bật Auto kiểm tra</span>
-            </label>
-            <label>
-              <input type="checkbox" value="theme" checked />
-              <span>Chế độ giao diện (Sáng / Tối)</span>
-            </label>
-            <label>
-              <input type="checkbox" value="autoCheckMode" checked />
-              <span>Chế độ Auto kiểm tra (UTC / Định kỳ)</span>
-            </label>
-            <label>
-              <input type="checkbox" value="webhookEnabled" checked />
-              <span>Bật thông báo Webhook</span>
-            </label>
-            <label>
-              <input type="checkbox" value="rewardTotals" />
-              <span>Thống kê phần thưởng</span>
-            </label>
-            <label>
-              <input type="checkbox" value="storeAccounts" />
-              <span>Tài khoản cửa hàng</span>
-            </label>
-            <label>
-              <input type="checkbox" value="favoriteRoleIds" />
-              <span>Nhân vật yêu thích</span>
-            </label>
-            <label>
-              <input type="checkbox" value="tokens" />
-              <span>Token</span>
-            </label>
+          <div id="weeklyLeaderboardList" class="leaderboard-list">
+            <div class="login-note" data-i18n="noLeaderboardData">No luck data for this week yet.</div>
           </div>
-          <label class="login-field config-passphrase-field" for="configPassphraseInput">
-            <span class="input-label">Mật khẩu bảo vệ file (tùy chọn — lưu kèm mật khẩu tài khoản)</span>
-            <input id="configPassphraseInput" type="password" placeholder="Để trống nếu không cần lưu mật khẩu tài khoản…" autocomplete="new-password" spellcheck="false" />
-          </label>
-          <div class="btn-row config-file-actions">
-            <button class="btn-util" id="exportConfigBtn" type="button">Xuất cấu hình</button>
-            <button class="btn-util" id="importConfigBtn" type="button">Nhập cấu hình</button>
-            <input id="importConfigFile" type="file" accept=".json,application/json" hidden />
-          </div>
-          <div class="login-settings-status" id="configSettingsStatus" role="status" aria-live="polite"></div>
-        </section>
+        </div>
 
-        <!-- Token Section -->
-        <section class="settings-section token-section" aria-labelledby="tokenTitle">
-          <div class="settings-section-head">
-            <h3 class="settings-section-title" id="tokenTitle">Token</h3>
-            <button class="char-copy-btn" id="copyTokenBtn" type="button" title="Sao chép token"
-              aria-label="Sao chép token">
-              <svg class="copy-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
-                stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-                <path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" />
-              </svg>
-            </button>
-          </div>
-          <textarea id="tokenBox" readonly placeholder="Token sẽ hiện ở đây sau khi lấy…"></textarea>
-          <div class="login-settings-status" id="tokenCopyStatus" role="status" aria-live="polite"></div>
-        </section>
-      </div>
+        <div class="btn-row analytics-actions">
+          <button class="btn-util" id="exportRewardsCsvBtn" type="button">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" />
+            </svg>
+            <span data-i18n="exportCsvBtn">Export CSV</span>
+          </button>
+          <button class="btn-util btn-destructive-subtle" id="clearRewardsBtn" type="button"
+            data-i18n="clearRewardsBtn">Clear stats</button>
+        </div>
+      </section>
     </section>
 
-    <!-- 4. Execution Log Console -->
-    <section id="logWrap" class="log-section" style="display: none" aria-label="Nhật ký hoạt động">
-      <div class="eyebrow log-title">Nhật ký</div>
-      <div id="log" role="region" aria-live="polite" tabindex="0"></div>
+    <!-- TAB 3: AUTOMATION & ACCOUNTS -->
+    <section class="tab-panel" id="tabPanelAutomation" data-tab-panel="automation" role="tabpanel"
+      aria-labelledby="navTabAutomation" hidden>
+      <!-- Auto Check Section -->
+      <section class="settings-section" aria-labelledby="autoCheckTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="autoCheckTitle" data-i18n="autoCheckTitle">Auto Check Schedule</h2>
+          <label class="switch-toggle" for="autoCheckEnabled">
+            <span class="settings-toggle-label" id="autoCheckToggleLabel" data-i18n="toggleOn">On</span>
+            <input id="autoCheckEnabled" type="checkbox" role="switch" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="settings-section-content" id="autoCheckSettings">
+          <div class="segmented-control auto-check-segmented" role="radiogroup" aria-label="Select check mode"
+            data-i18n-aria-label="autoCheckModeAria">
+            <label class="segmented-item">
+              <input type="radio" name="autoCheckMode" value="utcReset" checked />
+              <span data-i18n="modeUtcReset">By UTC Reset</span>
+            </label>
+            <label class="segmented-item">
+              <input type="radio" name="autoCheckMode" value="interval" />
+              <span data-i18n="modeCustomInterval">Custom Interval</span>
+            </label>
+          </div>
+
+          <!-- Panel 1: UTC Reset Check -->
+          <div id="utcResetPanel" class="auto-check-panel">
+            <label class="login-field" for="utcResetDaySelect">
+              <span class="input-label" data-i18n="utcResetDayLabel">Target reset day</span>
+              <div class="select-wrapper">
+                <select id="utcResetDaySelect">
+                  <option value="5" selected data-i18n="utcDayFriday">Friday (RoK Event Reset)</option>
+                  <option value="everyday" data-i18n="utcDayEveryday">Everyday (Daily 00:05 UTC)</option>
+                  <option value="1" data-i18n="utcDayMonday">Every Monday</option>
+                  <option value="0" data-i18n="utcDaySunday">Every Sunday</option>
+                </select>
+                <svg class="select-arrow" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+                  stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 6l4 4 4-4" />
+                </svg>
+              </div>
+            </label>
+            <p class="login-note" data-i18n="utcResetNote">
+              Runs at 00:05 UTC (proactively refreshes tokens at 23:50 UTC). Automatically catches up if the browser opens late.
+            </p>
+          </div>
+
+          <!-- Panel 2: Custom Interval Check -->
+          <div id="intervalPanel" class="auto-check-panel" hidden>
+            <label class="login-field auto-check-interval">
+              <span data-i18n="intervalMinutesLabel">Interval between checks (minutes)</span>
+              <input id="autoCheckIntervalMinutes" type="number" min="1" step="1" inputmode="numeric" />
+            </label>
+            <div class="interval-presets" role="group" aria-label="Preset check intervals"
+              data-i18n-aria-label="intervalPresetsAria">
+              <div class="interval-preset-chips">
+                <button type="button" class="preset-chip" data-minutes="60"
+                  title="1 hour (60 mins - 24x/day)" data-i18n-title="preset1hTitle">1h</button>
+                <button type="button" class="preset-chip" data-minutes="120"
+                  title="2 hours (120 mins - 12x/day)" data-i18n-title="preset2hTitle">2h</button>
+                <button type="button" class="preset-chip" data-minutes="180"
+                  title="3 hours (180 mins - 8x/day)" data-i18n-title="preset3hTitle">3h</button>
+                <button type="button" class="preset-chip" data-minutes="240"
+                  title="4 hours (240 mins - 6x/day)" data-i18n-title="preset4hTitle">4h</button>
+                <button type="button" class="preset-chip" data-minutes="360"
+                  title="6 hours (360 mins - 4x/day)" data-i18n-title="preset6hTitle">6h</button>
+                <button type="button" class="preset-chip" data-minutes="480"
+                  title="8 hours (480 mins - 3x/day)" data-i18n-title="preset8hTitle">8h</button>
+                <button type="button" class="preset-chip" data-minutes="720"
+                  title="12 hours (720 mins - 2x/day)" data-i18n-title="preset12hTitle">12h</button>
+                <button type="button" class="preset-chip" data-minutes="1440"
+                  title="24 hours (1440 mins - 1x/day)" data-i18n-title="preset24hTitle">24h</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="login-settings-status" id="autoCheckSettingsStatus" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- Auto Relogin Section -->
+      <section class="settings-section" aria-labelledby="autoReloginTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="autoReloginTitle" data-i18n="autoReloginTitle">Accounts &amp; Auto-Relogin</h2>
+          <label class="switch-toggle" for="autoReloginEnabled">
+            <span class="settings-toggle-label" id="autoReloginToggleLabel" data-i18n="toggleOn">On</span>
+            <input id="autoReloginEnabled" type="checkbox" role="switch" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="settings-section-content" id="autoReloginSettings">
+          <div class="login-tabs" role="tablist" aria-label="Store login configuration"
+            data-i18n-aria-label="storeLoginTabsAria">
+            <button class="login-tab active" id="loginTabPluto" type="button" role="tab" aria-selected="true"
+              aria-controls="loginPanelPluto" data-login-tab="plutomall">
+              Plutomall
+            </button>
+            <button class="login-tab" id="loginTabLilith" type="button" role="tab" aria-selected="false"
+              aria-controls="loginPanelLilith" data-login-tab="lilithstore">
+              Lilith Store
+            </button>
+          </div>
+          <section class="login-panel" id="loginPanelLilith" role="tabpanel" aria-labelledby="loginTabLilith" hidden>
+            <div class="saved-accounts" id="lilithstoreAccounts"></div>
+            <button class="btn-util add-account-btn" data-add-account="lilithstore" type="button"
+              data-i18n="addAccountBtn">
+              + Add account
+            </button>
+          </section>
+          <section class="login-panel" id="loginPanelPluto" role="tabpanel" aria-labelledby="loginTabPluto">
+            <div class="saved-accounts" id="plutomallAccounts"></div>
+            <button class="btn-util add-account-btn" data-add-account="plutomall" type="button"
+              data-i18n="addAccountBtn">
+              + Add account
+            </button>
+          </section>
+          <p class="login-note" data-i18n="accountIsolationNote">
+            Each account maintains its own token and draw data.
+          </p>
+          <div class="btn-row login-actions">
+            <button class="btn-util btn-primary-outline" id="saveLoginBtn" type="button" data-i18n="saveLoginBtn">
+              Save credentials
+            </button>
+            <button class="btn-util btn-destructive-subtle" id="clearLoginBtn" type="button" data-i18n="clearLoginBtn">
+              Delete all
+            </button>
+          </div>
+          <div class="btn-row">
+            <button class="btn-util" id="testPlutoAccountsBtn" type="button" data-i18n="testPlutoAccountsBtn">
+              Check all Pluto
+            </button>
+            <button class="btn-util" id="testLilithAccountsBtn" type="button" data-i18n="testLilithAccountsBtn">
+              Check all Lilith
+            </button>
+          </div>
+          <div class="btn-row">
+            <button class="btn-util" id="testPlutoReloginBtn" type="button" title="Test selected Plutomall account"
+              aria-label="Test selected Plutomall account" data-i18n-title="testPlutoReloginTitle"
+              data-i18n-aria-label="testPlutoReloginTitle">
+              <svg class="util-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+                stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
+                <path d="M2 2v4h4" />
+              </svg>
+              <span data-i18n="testPlutoReloginBtn">Relogin Pluto</span>
+            </button>
+            <button class="btn-util" id="testLilithReloginBtn" type="button" title="Test selected Lilith Store account"
+              aria-label="Test selected Lilith Store account" data-i18n-title="testLilithReloginTitle"
+              data-i18n-aria-label="testLilithReloginTitle">
+              <svg class="util-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+                stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9L2 6" />
+                <path d="M2 2v4h4" />
+              </svg>
+              <span data-i18n="testLilithReloginBtn">Relogin Lilith</span>
+            </button>
+          </div>
+          <div class="login-settings-status" id="loginSettingsStatus" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+    </section>
+
+    <!-- TAB 4: SYSTEM & CONFIG -->
+    <section class="tab-panel" id="tabPanelSystem" data-tab-panel="system" role="tabpanel"
+      aria-labelledby="navTabSystem" hidden>
+      <!-- Webhook Notification Section -->
+      <section class="settings-section" aria-labelledby="webhookTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="webhookTitle" data-i18n="webhookTitle">Webhook Notifications</h2>
+          <label class="switch-toggle" for="webhookEnabled">
+            <span class="settings-toggle-label" id="webhookToggleLabel" data-i18n="toggleOff">Off</span>
+            <input id="webhookEnabled" type="checkbox" role="switch" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="settings-section-content" id="webhookSettings">
+          <label class="login-field" for="webhookUrl">
+            <span class="input-label" data-i18n="webhookUrlLabel">Webhook URLs (one URL per line)</span>
+            <textarea id="webhookUrl" rows="3"
+              placeholder="https://discord.com/api/webhooks/...&#10;https://api.telegram.org/bot..."
+              autocomplete="off" spellcheck="false"></textarea>
+          </label>
+          <div class="btn-row webhook-actions">
+            <button class="btn-util btn-primary-outline" id="saveWebhookBtn" type="button"
+              data-i18n="saveWebhookBtn">Save Webhook</button>
+            <button class="btn-util" id="testWebhookBtn" type="button" data-i18n="testWebhookBtn">Send Test</button>
+          </div>
+          <div class="login-settings-status" id="webhookSettingsStatus" role="status" aria-live="polite"></div>
+          <div class="webhook-guide">
+            <div class="webhook-guide-title" data-i18n="webhookGuideTitle">Supported webhook formats:</div>
+            <div class="webhook-guide-item">
+              <span class="webhook-guide-badge">Discord</span>
+              <code>https://discord.com/api/webhooks/ID/TOKEN</code>
+            </div>
+            <div class="webhook-guide-item">
+              <span class="webhook-guide-badge">Telegram</span>
+              <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;</code>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Export / Import Config Section -->
+      <section class="settings-section" aria-labelledby="configTitle">
+        <h2 class="settings-section-title" id="configTitle" data-i18n="configTitle">Export / Import Config</h2>
+        <p class="login-note config-warning" data-i18n="configWarningNote">
+          Passwords are excluded by default. Enter a passphrase below to encrypt account passwords with AES-GCM.
+        </p>
+        <div class="config-selection-actions">
+          <button class="btn-util" id="toggleAllConfigBtn" type="button">
+            <svg class="config-selection-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <rect x="2.5" y="2.5" width="15" height="15" rx="3" />
+              <path d="m6.5 10 2.3 2.3 4.8-4.8" />
+            </svg>
+            <span id="toggleAllConfigLabel" data-i18n="selectAll">Select all</span>
+          </button>
+          <span class="config-selection-count" id="configSelectionCount"></span>
+        </div>
+        <div class="config-options" aria-label="Select settings to export" data-i18n-aria-label="configOptionsAria">
+          <label>
+            <input type="checkbox" value="drawFavoritesOnly" checked />
+            <span data-i18n="configOptDrawFavoritesOnly">Only draw favorite characters</span>
+          </label>
+          <label>
+            <input type="checkbox" value="autoReloginEnabled" checked />
+            <span data-i18n="configOptAutoReloginEnabled">Auto-relogin</span>
+          </label>
+          <label>
+            <input type="checkbox" value="autoCheckIntervalMinutes" checked />
+            <span data-i18n="configOptAutoCheckIntervalMinutes">Auto check interval</span>
+          </label>
+          <label>
+            <input type="checkbox" value="autoCheckEnabled" checked />
+            <span data-i18n="configOptAutoCheckEnabled">Enable Auto check</span>
+          </label>
+          <label>
+            <input type="checkbox" value="theme" checked />
+            <span data-i18n="configOptTheme">Theme mode (Light / Dark)</span>
+          </label>
+          <label>
+            <input type="checkbox" value="language" checked />
+            <span data-i18n="configOptLanguage">Language (EN / VI)</span>
+          </label>
+          <label>
+            <input type="checkbox" value="autoCheckMode" checked />
+            <span data-i18n="configOptAutoCheckMode">Auto check mode (UTC / Interval)</span>
+          </label>
+          <label>
+            <input type="checkbox" value="webhookEnabled" checked />
+            <span data-i18n="configOptWebhookEnabled">Enable Webhook notifications</span>
+          </label>
+          <label>
+            <input type="checkbox" value="rewardTotals" />
+            <span data-i18n="configOptRewardTotals">Reward statistics</span>
+          </label>
+          <label>
+            <input type="checkbox" value="storeAccounts" />
+            <span data-i18n="configOptStoreAccounts">Store accounts</span>
+          </label>
+          <label>
+            <input type="checkbox" value="favoriteRoleIds" />
+            <span data-i18n="configOptFavoriteRoleIds">Favorite characters</span>
+          </label>
+          <label>
+            <input type="checkbox" value="tokens" />
+            <span data-i18n="configOptTokens">Tokens</span>
+          </label>
+        </div>
+        <label class="login-field config-passphrase-field" for="configPassphraseInput">
+          <span class="input-label" data-i18n="configPassphraseLabel">File passphrase (optional — AES-GCM encryption)</span>
+          <input id="configPassphraseInput" type="password"
+            placeholder="Leave blank to omit account passwords…" autocomplete="new-password"
+            spellcheck="false" data-i18n-placeholder="configPassphrasePlaceholder" />
+        </label>
+        <div class="btn-row config-file-actions">
+          <button class="btn-util" id="exportConfigBtn" type="button" data-i18n="exportConfigBtn">Export config</button>
+          <button class="btn-util" id="importConfigBtn" type="button" data-i18n="importConfigBtn">Import config</button>
+          <input id="importConfigFile" type="file" accept=".json,application/json" hidden />
+        </div>
+        <div class="login-settings-status" id="configSettingsStatus" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- Language Section -->
+      <section class="settings-section" aria-labelledby="languageTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="languageTitle" data-i18n="languageTitle">Language</h2>
+          <span class="settings-toggle-label" id="currentLanguageLabel" data-i18n="langEnglish">English</span>
+        </div>
+        <div class="segmented-control theme-segmented" role="radiogroup" aria-label="Select language"
+          data-i18n-aria-label="languageSelectAria">
+          <label class="segmented-item">
+            <input type="radio" name="languageMode" value="en" checked />
+            <span data-i18n="langEnglish">English</span>
+          </label>
+          <label class="segmented-item">
+            <input type="radio" name="languageMode" value="vi" />
+            <span data-i18n="langVietnamese">Tiếng Việt</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Theme Mode Section -->
+      <section class="settings-section" aria-labelledby="themeTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="themeTitle" data-i18n="themeTitle">Theme Mode</h2>
+          <span class="settings-toggle-label" id="currentThemeLabel" data-i18n="themeLight">Light</span>
+        </div>
+        <div class="segmented-control theme-segmented" role="radiogroup" aria-label="Select theme mode"
+          data-i18n-aria-label="themeSelectAria">
+          <label class="segmented-item">
+            <input type="radio" name="themeMode" value="system" />
+            <span data-i18n="themeSystem">System</span>
+          </label>
+          <label class="segmented-item">
+            <input type="radio" name="themeMode" value="light" checked />
+            <span data-i18n="themeLight">Light</span>
+          </label>
+          <label class="segmented-item">
+            <input type="radio" name="themeMode" value="dark" />
+            <span data-i18n="themeDark">Dark</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Token Section -->
+      <section class="settings-section token-section" aria-labelledby="tokenTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="tokenTitle" data-i18n="tokenTitle">Token</h2>
+          <button class="char-copy-btn" id="copyTokenBtn" type="button" title="Copy token"
+            aria-label="Copy token" data-i18n-title="copyTokenTitle" data-i18n-aria-label="copyTokenTitle">
+            <svg class="copy-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+              stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+              <path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1" />
+            </svg>
+          </button>
+        </div>
+        <textarea id="tokenBox" readonly placeholder="Token will appear here after capture…"
+          data-i18n-placeholder="tokenPlaceholder"></textarea>
+        <div class="login-settings-status" id="tokenCopyStatus" role="status" aria-live="polite"></div>
+      </section>
     </section>
   </main>
 
-  <!-- Bottom Status Bar -->
+  <!-- Slide-Up Execution Log Drawer -->
+  <section id="logWrap" class="log-section" style="display: none" aria-label="Activity log"
+    data-i18n-aria-label="logSectionAria">
+    <div class="log-drawer-head">
+      <span class="eyebrow log-title" data-i18n="logDrawerTitle">Activity Log</span>
+      <button type="button" id="closeLogBtn" class="log-close-btn" aria-label="Hide log" title="Hide log"
+        data-i18n-title="hideLogTitle" data-i18n-aria-label="hideLogTitle">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+    </div>
+    <div id="log" role="region" aria-live="polite" tabindex="0"></div>
+  </section>
+
+  <!-- Bottom 4-Tab Navigation Bar -->
+  <nav class="bottom-tab-bar" role="tablist" aria-label="Main navigation" data-i18n-aria-label="mainNavAria">
+    <button type="button" class="nav-tab-btn active" id="navTabDraw" role="tab" aria-selected="true"
+      aria-controls="tabPanelDraw" data-popup-tab="draw">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="8" cy="8" r="6" />
+        <circle cx="8" cy="8" r="2" />
+      </svg>
+      <span data-i18n="navDraw">Draw</span>
+    </button>
+    <button type="button" class="nav-tab-btn" id="navTabAnalytics" role="tab" aria-selected="false"
+      aria-controls="tabPanelAnalytics" data-popup-tab="analytics">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 13.5h8M8 10.5v3M5 2.5h6v4a3 3 0 0 1-6 0v-4z" />
+      </svg>
+      <span data-i18n="navAnalytics">Luck</span>
+    </button>
+    <button type="button" class="nav-tab-btn" id="navTabAutomation" role="tab" aria-selected="false"
+      aria-controls="tabPanelAutomation" data-popup-tab="automation">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="8" cy="8" r="6" />
+        <path d="M8 4.5V8l2.5 1.5" />
+      </svg>
+      <span data-i18n="navAutomation">Auto</span>
+    </button>
+    <button type="button" class="nav-tab-btn" id="navTabSystem" role="tab" aria-selected="false"
+      aria-controls="tabPanelSystem" data-popup-tab="system">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+        <circle cx="5.5" cy="4.5" r="1.4" />
+        <circle cx="10.5" cy="8" r="1.4" />
+        <circle cx="6.5" cy="11.5" r="1.4" />
+      </svg>
+      <span data-i18n="navSystem">System</span>
+    </button>
+  </nav>
+
+  <!-- Bottom Persistent Dark Status Bar -->
   <footer class="g-footer">
     <div class="status-pill" role="status" aria-live="polite">
       <span class="status-dot" id="statusDot"></span>
-      <span id="status">Chưa có token</span>
+      <span id="status" data-i18n="noToken">No token</span>
     </div>
-    <time class="utc-clock" id="utcClock" aria-label="Giờ UTC">UTC --:--:--</time>
+    <div class="footer-right">
+      <button type="button" id="toggleLogBtn" class="footer-log-btn" aria-expanded="false" aria-controls="logWrap"
+        title="Toggle activity log" data-i18n-title="toggleLogTitle">
+        <span data-i18n="footerLogBtn">Log</span>
+        <svg class="footer-log-chevron" viewBox="0 0 12 12" width="9" height="9" fill="none" stroke="currentColor"
+          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 7.5l3-3 3 3" />
+        </svg>
+      </button>
+      <time class="utc-clock" id="utcClock" aria-label="UTC Time" data-i18n-aria-label="utcClockAria">UTC --:--:--</time>
+    </div>
   </footer>
 
   <script src="utils.js"></script>

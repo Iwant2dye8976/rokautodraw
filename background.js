@@ -6,6 +6,15 @@ const activeRelogins = new Set();
 const activeReloginRefreshes = new Set();
 const activeReloginAccountChecks = new Set();
 
+async function getLanguage() {
+    try {
+        const { language } = await chrome.storage.local.get("language");
+        return normalizeLanguage(language);
+    } catch {
+        return DEFAULT_LANGUAGE;
+    }
+}
+
 async function isSessionLocked(key, maxAgeMs = 5 * 60 * 1000) {
     try {
         const session = await chrome.storage.session.get(key);
@@ -215,18 +224,20 @@ async function continueReloginSequence(expectedMall, expectedAccountId, failure)
             autoReloginQueueFailures: failures,
         });
         if (await openReloginWindow(next.mall, next.accountId)) return;
-        failures.push({ mall: next.mall, accountId: next.accountId, error: "Không thể mở tab đăng nhập." });
+        const lang = await getLanguage();
+        failures.push({ mall: next.mall, accountId: next.accountId, error: t("cannotOpenLoginTabError", {}, lang) });
         nextIndex++;
     }
     await chrome.storage.session.remove(RELOGIN_SEQUENCE_KEYS);
+    const lang = await getLanguage();
     await chrome.storage.local.set({
         autoReloginStatus: failures.length
-            ? `Đã kiểm tra xong các tài khoản; ${failures.length} tài khoản thất bại.`
-            : "Đã hoàn tất kiểm tra tuần tự các tài khoản.",
+            ? t("reloginSeqCompleteWithFailures", { count: failures.length }, lang)
+            : t("reloginSeqCompleteSuccess", {}, lang),
     });
     if (failures.length > 0) {
         const errorDetails = failures.map(f => `- ${f.mall} (${f.accountId}): ${f.error}`).join("\n");
-        void sendWebhookMessage(`⚠️ [ROK Auto] Đăng nhập thất bại ${failures.length} tài khoản:\n${errorDetails}`);
+        void sendWebhookMessage(t("webhookReloginFailed", { count: failures.length, details: errorDetails }, lang));
     }
 }
 
@@ -294,14 +305,15 @@ async function fetchJson(url, options = {}, accountId, retries = 1) {
         try {
             response = await fetch(url, { ...options, signal: controller.signal });
         } catch (error) {
+            const lang = await getLanguage();
             if (error.name === "AbortError") {
-                throw new Error("Yêu cầu hết thời gian chờ");
+                throw new Error(t("requestTimeoutError", {}, lang));
             }
             if (retries > 0) {
                 await new Promise(r => setTimeout(r, 1000));
                 return fetchJson(url, options, accountId, retries - 1);
             }
-            throw new Error(`Lỗi kết nối: ${error.message}`);
+            throw new Error(t("networkError", { error: error.message }, lang));
         }
 
         if (response.status === 429 && retries > 0) {
@@ -321,7 +333,8 @@ async function fetchJson(url, options = {}, accountId, retries = 1) {
         try {
             json = await response.json();
         } catch {
-            const error = new Error(`Phản hồi API không phải JSON (HTTP ${response.status})`);
+            const lang = await getLanguage();
+            const error = new Error(t("nonJsonResponseError", { status: response.status }, lang));
             error.status = response.status;
             throw error;
         }
@@ -331,14 +344,16 @@ async function fetchJson(url, options = {}, accountId, retries = 1) {
                 void setStoreData(mall, { isValidToken: false }, accountId);
                 void enqueueOrOpenRelogin(mall, accountId);
             }
+            const lang = await getLanguage();
             const error = new Error(
-                json?.msg || json?.message || "Token đã hết hạn"
+                json?.msg || json?.message || t("tokenExpired", {}, lang)
             );
             error.status = 401;
             throw error;
         }
         if (!response.ok) {
-            const error = new Error(json?.msg || json?.message || `API trả về HTTP ${response.status}`);
+            const lang = await getLanguage();
+            const error = new Error(json?.msg || json?.message || t("apiHttpError", { status: response.status }, lang));
             error.status = response.status;
             throw error;
         }
@@ -370,15 +385,16 @@ async function openReloginWindow(mall, accountId) {
             "autoReloginMall",
             "autoReloginAccountId",
         ]);
+        const lang = await getLanguage();
         if (settings.autoReloginEnabled !== true) {
             await chrome.storage.local.set({
-                autoReloginStatus: "Hãy bật Auto đăng nhập lại trước khi kiểm tra.",
+                autoReloginStatus: t("enableAutoReloginFirst", {}, lang),
             });
             return false;
         }
         if (!account?.username || !account.password) {
             await chrome.storage.local.set({
-                autoReloginStatus: `Thiếu tài khoản hoặc mật khẩu ${STORE_NAMES[mall]}.`,
+                autoReloginStatus: t("missingStoreCredentials", { store: STORE_NAMES[mall] }, lang),
             });
             return false;
         }
@@ -390,8 +406,8 @@ async function openReloginWindow(mall, accountId) {
                 await chrome.storage.local.set({
                     autoReloginStatus: session.autoReloginMall === mall &&
                         session.autoReloginAccountId === selectedId
-                        ? `Tab đăng nhập ${STORE_NAMES[mall]} đã đang mở.`
-                        : "Một tab tự đăng nhập khác đang chạy.",
+                        ? t("storeLoginTabAlreadyOpen", { store: STORE_NAMES[mall] }, lang)
+                        : t("otherLoginTabRunning", {}, lang),
                 });
                 return true;
             } catch {
@@ -426,7 +442,7 @@ async function openReloginWindow(mall, accountId) {
             createProps.windowId = targetWindowId;
         }
         const reloginTab = await chrome.tabs.create(createProps);
-        if (reloginTab.id === undefined) throw new Error("Không tạo được tab đăng nhập");
+        if (reloginTab.id === undefined) throw new Error(t("cannotCreateLoginTabError", {}, lang));
 
         await chrome.storage.session.set({
             autoReloginWindowId: reloginTab.windowId ?? targetWindowId,
@@ -442,7 +458,7 @@ async function openReloginWindow(mall, accountId) {
         }
         await chrome.storage.local.set({
             currentMall: mall,
-            autoReloginStatus: `Đang đăng nhập ${STORE_NAMES[mall]} trong tab nền`,
+            autoReloginStatus: t("loggingInBackgroundTab", { store: STORE_NAMES[mall] }, lang),
         });
         const reloginUrl = mall === "lilithstore" ? LILITH_STORE_URL : PLUTOMALL_RELOGIN_URL;
         await chrome.tabs.update(reloginTab.id, { url: reloginUrl, active: false });
@@ -450,8 +466,9 @@ async function openReloginWindow(mall, accountId) {
     } catch (error) {
         console.error(`[LilithDraw] Could not open ${STORE_NAMES[mall]} relogin tab:`, error);
         try {
+            const lang = await getLanguage();
             await chrome.storage.local.set({
-                autoReloginStatus: `Không thể mở cửa sổ đăng nhập: ${error.message}`,
+                autoReloginStatus: t("cannotOpenLoginWindowError", { error: error.message }, lang),
             });
         } catch (storageError) {
             console.error("[LilithDraw] Could not save relogin error status:", storageError);
@@ -463,11 +480,11 @@ async function openReloginWindow(mall, accountId) {
     }
 }
 
-function getAppIdentifiers(data) {
+function getAppIdentifiers(data, lang = DEFAULT_LANGUAGE) {
     const appUid = Number(data.appUid);
     const appId = Number(data.appId);
     if (!Number.isFinite(appUid) || appUid <= 0 || !Number.isFinite(appId) || appId <= 0) {
-        throw new Error("Thiếu appUid/appId. Hãy mở lại trang cửa hàng để lấy thông tin.");
+        throw new Error(t("missingAppIdentifiersError", {}, lang));
     }
     return { appUid, appId };
 }
@@ -581,7 +598,7 @@ async function checkAndCatchUpUtcReset() {
             const todayStr = getTodayUtcDateString(now);
             await chrome.storage.local.set({ lastUtcResetDate: todayStr });
             console.log(`[LilithDraw] Catching up missed UTC reset for ${todayStr}`);
-            await autoDrawAllMalls("Bù lượt reset 00:05 UTC");
+            await autoDrawAllMalls("triggerCatchUpUtc");
         }
     } catch (e) {
         console.error("[LilithDraw] Could not catch up missed UTC reset:", e);
@@ -664,7 +681,7 @@ chrome.runtime.onStartup.addListener(() => {
         const mode = data.autoCheckMode || "utcReset";
         if (enabled) {
             if (mode === "interval") {
-                await autoDrawAllMalls("Khởi động Chrome");
+                await autoDrawAllMalls("triggerChromeStartup");
             } else {
                 await checkAndCatchUpUtcReset();
             }
@@ -687,7 +704,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
             const enabled = data.autoCheckEnabled !== false;
             const mode = data.autoCheckMode || "utcReset";
             if (enabled && mode === "interval") {
-                await autoDrawAllMalls("Alarm định kỳ");
+                await autoDrawAllMalls("triggerIntervalAlarm");
             }
         })().catch(error => console.error("[LilithDraw] Scheduled interval check failed:", error));
     } else if (alarm.name === UTC_RESET_ALARM) {
@@ -699,7 +716,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
             if (!enabled || mode !== "utcReset") return;
             const todayStr = getTodayUtcDateString();
             await chrome.storage.local.set({ lastUtcResetDate: todayStr });
-            await autoDrawAllMalls("Reset 00:05 UTC");
+            await autoDrawAllMalls("triggerUtcReset");
         })().catch(error => console.error("[LilithDraw] Scheduled UTC reset check failed:", error));
     } else if (alarm.name === UTC_PRE_RESET_ALARM) {
         console.log("[LilithDraw] Pre-reset proactive relogin alarm fired");
@@ -796,16 +813,18 @@ async function refreshStoreAfterRelogin(mall, accountId) {
     try {
         const roles = await getRoles(token, mall, true, accountId);
         const totalDrawsLeft = await getTotalDrawsLeft(token, roles, mall, accountId);
+        const lang = await getLanguage();
         await chrome.storage.local.set({
-            autoReloginStatus: `Đăng nhập ${STORE_NAMES[mall]} thành công; đã làm mới ${roles.length} nhân vật, còn ${totalDrawsLeft} lượt.`,
+            autoReloginStatus: t("reloginSuccessRefreshed", { store: STORE_NAMES[mall], roles: roles.length, draws: totalDrawsLeft }, lang),
         });
         if (totalDrawsLeft > 0) {
-            void autoDrawMall(mall, "Tự động quay sau đăng nhập", accountId);
+            void autoDrawMall(mall, "triggerPostRelogin", accountId);
         }
     } catch (error) {
         refreshError = error.message;
+        const lang = await getLanguage();
         await chrome.storage.local.set({
-            autoReloginStatus: `Đăng nhập ${STORE_NAMES[mall]} xong nhưng làm mới thất bại: ${error.message}`,
+            autoReloginStatus: t("reloginRefreshFailed", { store: STORE_NAMES[mall], error: error.message }, lang),
         });
         console.error(`[LilithDraw] Refresh after ${STORE_NAMES[mall]} relogin failed:`, error);
     } finally {
@@ -821,13 +840,14 @@ async function markReloginReadyWithoutAccountSwitch(mall, startedAt) {
         "autoReloginReadyAt",
     ]);
     if (session.autoReloginMall !== mall || session.autoReloginReadyAt) return;
+    const lang = await getLanguage();
     if (!Number.isFinite(startedAt)) {
-        throw new Error("Không tìm thấy thời điểm bắt đầu phiên tự đăng nhập.");
+        throw new Error(t("missingReloginStartTimeError", {}, lang));
     }
 
     await chrome.storage.session.set({ autoReloginReadyAt: startedAt });
     await chrome.storage.local.set({
-        autoReloginStatus: `Không xuất hiện yêu cầu đổi tài khoản ${STORE_NAMES[mall]}; đang tiếp tục với phiên cửa hàng hiện có.`,
+        autoReloginStatus: t("noAccountSwitchPromptStatus", { store: STORE_NAMES[mall] }, lang),
     });
 }
 
@@ -857,8 +877,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         }
 
         await chrome.storage.session.set({ autoReloginReturnedAt: Date.now() });
+        const lang = await getLanguage();
         await chrome.storage.local.set({
-            autoReloginStatus: `Đã trở về ${STORE_NAMES[autoReloginMall]}; đang kiểm tra yêu cầu chuyển sang tài khoản mới.`,
+            autoReloginStatus: t("returnedToStoreCheckingSwitch", { store: STORE_NAMES[autoReloginMall] }, lang),
         });
 
         if (activeReloginAccountChecks.has(tabId)) return;
@@ -917,7 +938,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                                 if (chrome.runtime.lastError) {
                                     reject(new Error(chrome.runtime.lastError.message));
                                 } else if (!response?.ok) {
-                                    reject(new Error(response?.error || "Không xác nhận được phiên đổi tài khoản"));
+                                    reject(new Error(response?.error || "cannotConfirmAccountSwitchError"));
                                 } else {
                                     resolve(response);
                                 }
@@ -933,7 +954,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             if (result?.clicked) {
                 console.log(`[LilithDraw][${autoReloginMall}] Switched to the newly logged-in account`);
             } else if (result?.found) {
-                throw new Error("Đã thấy hộp thoại đổi tài khoản nhưng không bấm được lựa chọn tài khoản mới.");
+                const lang = await getLanguage();
+                throw new Error(t("accountSwitchClickFailedError", {}, lang));
             } else {
                 await markReloginReadyWithoutAccountSwitch(autoReloginMall, autoReloginStartedAt);
             }
@@ -943,9 +965,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         await refreshStoreAfterRelogin(autoReloginMall, autoReloginAccountId);
     })().catch(error => {
         console.error("[LilithDraw] Could not verify relogin redirect:", error);
-        void chrome.storage.local.set({
-            autoReloginStatus: `Không thể xử lý hộp thoại chuyển tài khoản: ${error.message}`,
-        }).catch(storageError => {
+        void (async () => {
+            const lang = await getLanguage();
+            await chrome.storage.local.set({
+                autoReloginStatus: t("accountSwitchDialogError", { error: error.message }, lang),
+            });
+        })().catch(storageError => {
             console.error("[LilithDraw] Could not save account-switch error status:", storageError);
         });
     });
@@ -996,7 +1021,7 @@ async function proactiveReloginExpiringAccounts() {
     await enqueueExpiredAccounts(expiringQueue);
 }
 
-async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
+async function autoDrawAllMalls(trigger = "triggerAutoCheck") {
     const expiredQueue = [];
     for (const mall of Object.keys(STORE_CONFIG)) {
         const accounts = await getStoreAccounts(mall);
@@ -1033,22 +1058,26 @@ async function autoDrawMall(mall, trigger, accountId) {
     activeDraws.add(profileKey);
     await setSessionLock(lockKey, true);
     await chrome.storage.local.set({ [ask(mall, accountId, "isDrawing")]: true });
-    const checkedAt = new Date().toLocaleString();
+    const lang = await getLanguage();
+    const triggerText = t(trigger, {}, lang) || trigger;
+    const localeTag = lang === "vi" ? "vi-VN" : "en-US";
+    const checkedAt = new Date().toLocaleString(localeTag);
+    const header = t("logHeaderAt", { trigger: triggerText, time: checkedAt }, lang);
     try {
         await chrome.storage.local.set({
-            [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Đang kiểm tra lượt quay..."],
+            [ask(mall, accountId, "drawLog")]: [header, t("logCheckingDraws", {}, lang)],
         });
         const token = await getToken(mall, accountId);
         if (!token) {
             await chrome.storage.local.set({
-                [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Bỏ qua: chưa có token"],
+                [ask(mall, accountId, "drawLog")]: [header, t("logSkippedNoToken", {}, lang)],
             });
             return;
         }
         if (isJwtExpired(token)) {
             await setStoreData(mall, { isValidToken: false }, accountId);
             await chrome.storage.local.set({
-                [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Bỏ qua: Token đã hết hạn, kích hoạt tự đăng nhập lại..."],
+                [ask(mall, accountId, "drawLog")]: [header, t("logSkippedExpiredToken", {}, lang)],
             });
             void enqueueOrOpenRelogin(mall, accountId);
             return;
@@ -1058,26 +1087,26 @@ async function autoDrawMall(mall, trigger, accountId) {
         if (totalDrawsLeft === 0) {
             await chrome.storage.local.set({
                 [ask(mall, accountId, "drawLog")]: [
-                    `${trigger} lúc ${checkedAt}`,
-                    "Kiểm tra hoàn tất: không còn lượt quay, bỏ qua quay thưởng.",
+                    header,
+                    t("logCheckCompleteNoDrawsSkip", {}, lang),
                 ],
             });
             return;
         }
         const log = await runDraws(token, mall, false, accountId, async currentLog => {
             await chrome.storage.local.set({
-                [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...currentLog],
+                [ask(mall, accountId, "drawLog")]: [header, ...currentLog],
             });
         });
         await chrome.storage.local.set({
-            [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, ...log],
+            [ask(mall, accountId, "drawLog")]: [header, ...log],
         });
     } catch (e) {
         console.error(`[LilithDraw][${mall}][${accountId || "legacy"}] autoDrawMall error:`, e);
         await chrome.storage.local.set({
             [ask(mall, accountId, "drawLog")]: [
-                `${trigger} lúc ${checkedAt}`,
-                `Lỗi kiểm tra: ${e.message}`,
+                header,
+                t("logCheckError", { error: e.message }, lang),
             ],
         });
     } finally {
@@ -1116,7 +1145,8 @@ async function getRoles(token, mall, forceRefresh = false, accountId) {
     }
     const roles = json?.data?.list;
     if (!Array.isArray(roles)) {
-        throw new Error("Phản hồi danh sách nhân vật không hợp lệ");
+        const lang = await getLanguage();
+        throw new Error(t("invalidRoleListError", {}, lang));
     }
     await setStoreData(mall, { roles, isValidToken: true }, accountId);
     return roles;
@@ -1133,10 +1163,11 @@ async function getCharacterById(token, roleId, mall, accountId) {
 }
 
 async function getManifest(token, role, mall, accountId) {
-    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId));
+    const lang = await getLanguage();
+    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId), lang);
     const config = STORE_CONFIG[mall];
     const params = new URLSearchParams({
-        language: "vi", osType: "pc",
+        language: lang === "vi" ? "vi" : "en", osType: "pc",
         name: role.name, avatar: role.avatar,
         svrId: role.svrId, svrName: "", roleId: role.roleId,
         gmEnvId: "", bbxRegion: "global",
@@ -1213,6 +1244,7 @@ async function drawOnce(token, role, mall, accountId, cachedIdentifiers) {
 }
 
 async function runDraws(token, mall, forceRefreshRoles = false, accountId, onProgress = null) {
+    const lang = await getLanguage();
     const startedAt = Date.now();
     const maxRuntimeMs = 4 * 60 * 1000;
     const log = [];
@@ -1247,20 +1279,20 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     try {
         roles = await getRoles(token, mall, forceRefreshRoles, accountId);
     } catch (e) {
-        log.push(`Lỗi khi tải thông tin nhân vật: ${e.message}`);
+        log.push(t("logLoadRolesError", { error: e.message }, lang));
         await reportProgress();
         return log;
     }
 
-    log.push(`Tìm thấy ${roles.length} nhân vật`);
+    log.push(t("logFoundRoles", { count: roles.length }, lang));
     await reportProgress();
     if (roles.length === 0) {
-        log.push("Không tìm thấy nhân vật nào");
+        log.push(t("logNoRolesFound", {}, lang));
         await reportProgress();
         return log;
     }
 
-    // Sắp xếp hoặc lọc roles theo các nhân vật yêu thích (favoriteRoleIds & drawFavoritesOnly)
+    // Sort or filter roles by favorite characters (favoriteRoleIds & drawFavoritesOnly)
     let filteredByFavorites = false;
     try {
         const favKey = ask(mall, accountId, "favoriteRoleIds");
@@ -1277,7 +1309,7 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
         roles = filtered.rolesToDraw;
         filteredByFavorites = filtered.filteredByFavorites;
         if (filteredByFavorites) {
-            log.push(`Chỉ quay nhân vật yêu thích: lọc ${roles.length}/${totalRolesCount} nhân vật`);
+            log.push(t("logFavoritesFiltered", { matched: roles.length, total: totalRolesCount }, lang));
             await reportProgress();
         }
     } catch (err) {
@@ -1287,14 +1319,14 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     const initialStoreData = await getStoreData(mall, accountId);
     let cachedIdentifiers = null;
     try {
-        cachedIdentifiers = getAppIdentifiers(initialStoreData);
+        cachedIdentifiers = getAppIdentifiers(initialStoreData, lang);
     } catch {}
     let currentTotalDraws = Number(initialStoreData.drawsLeft);
 
     let remaining = 0;
     for (const role of roles) {
         if (Date.now() - startedAt >= maxRuntimeMs) {
-            log.push("Đã tạm dừng để tránh quá thời gian chạy; có thể bấm quay lại để tiếp tục.");
+            log.push(t("logPausedTimeout", {}, lang));
             await flushSessionRewards();
             await reportProgress();
             return log;
@@ -1306,7 +1338,7 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
             if (drawCount > 0) {
                 while (drawCount > 0) {
                     if (Date.now() - startedAt >= maxRuntimeMs) {
-                        log.push("Đã tạm dừng để tránh quá thời gian chạy; có thể bấm quay lại để tiếp tục.");
+                        log.push(t("logPausedTimeout", {}, lang));
                         await flushSessionRewards();
                         await reportProgress();
                         return log;
@@ -1314,9 +1346,10 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                     try {
                         const result = await drawOnce(token, role, mall, accountId, cachedIdentifiers);
                         const rewardId = result?.data?.rewardId;
-                        const reward = REWARDS[rewardId] || result?.data?.reward ||
-                            (rewardId ? `Phần thưởng ${rewardId}` : null);
-                        if (!reward) throw new Error(result?.msg || "Phản hồi quay thưởng thiếu thông tin phần thưởng");
+                        const reward = getRewardNameById(rewardId, lang) ||
+                            (result?.data?.reward ? translateRewardName(result.data.reward, lang) : null) ||
+                            (rewardId ? t("rewardFallback", { id: rewardId }, lang) : null);
+                        if (!reward) throw new Error(result?.msg || t("missingRewardInfoError", {}, lang));
                         if (rewardId && sessionRewardIcons[rewardId] && !sessionRewardIcons[reward]) {
                             sessionRewardIcons[reward] = sessionRewardIcons[rewardId];
                         }
@@ -1328,7 +1361,7 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                         drawCount--;
                         await reportProgress();
 
-                        // Cập nhật drawsLeft giảm dần trong storage theo thời gian thực
+                        // Decrement drawsLeft in storage progressively in real time
                         if (Number.isFinite(currentTotalDraws) && currentTotalDraws > 0) {
                             currentTotalDraws = Math.max(0, currentTotalDraws - 1);
                             try {
@@ -1344,12 +1377,12 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                     } catch (drawErr) {
                         const errMsg = drawErr.message || "";
                         if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
-                            log.push(`[${role.name}] Đã hết lượt quay (${errMsg})`);
+                            log.push(t("logOutOfDrawsWithReason", { name: role.name, error: errMsg }, lang));
                             await reportProgress();
                             drawCount = 0;
                             break;
                         } else if (drawErr.status === 401 || drawErr.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
-                            log.push(`[${role.name}] Token đã hết hạn, dừng quay: ${errMsg}`);
+                            log.push(t("logTokenExpiredStopDraw", { name: role.name, error: errMsg }, lang));
                             await flushSessionRewards();
                             await reportProgress();
                             return log;
@@ -1359,26 +1392,26 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                     }
                 }
             } else {
-                log.push(`[${role.name}] Không còn lượt quay nào`);
+                log.push(t("logNoDrawsLeftForRole", { name: role.name }, lang));
                 await reportProgress();
             }
             remaining += drawCount;
         } catch (e) {
             const errMsg = e.message || "";
             if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
-                log.push(`[${role.name}] Đã hết lượt quay (${errMsg})`);
+                log.push(t("logOutOfDrawsWithReason", { name: role.name, error: errMsg }, lang));
                 await reportProgress();
             } else if (e.status === 401 || e.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
-                log.push(`[${role.name}] Token đã hết hạn, dừng quay: ${errMsg}`);
+                log.push(t("logTokenExpiredStopDraw", { name: role.name, error: errMsg }, lang));
                 await flushSessionRewards();
                 await reportProgress();
                 return log;
             } else {
-                log.push(`[${role.name}] Lỗi: ${errMsg}`);
+                log.push(t("logRoleError", { name: role.name, error: errMsg }, lang));
                 await reportProgress();
             }
         }
-        // Gửi webhook thông báo ngay sau khi nhân vật quay xong (nếu có trúng thưởng)
+        // Send webhook notification immediately after a character finishes drawing (if rewards won)
         const charRewards = roleRewards.get(role);
         if (charRewards && Object.keys(charRewards).length > 0) {
             const storeName = STORE_NAMES[mall] || mall;
@@ -1388,11 +1421,11 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                 return icon ? `  x${count} ${name}: ${icon}` : `  x${count} ${name}`;
             }).join("\n");
             const avatar = role.avatar ? `\n  Avatar: ${role.avatar}` : "";
-            const notifyText = `🎲 [${storeName}] Hoàn tất ${wonCount} lượt quay cho [${role.name}]!${avatar}\n${lines}`;
+            const notifyText = t("webhookDrawCompleteText", { store: storeName, count: wonCount, name: role.name, avatar, lines }, lang);
             const discordPayload = {
                 username: "Lucky Draw Bot",
-                content: `🎲 [${storeName}] Hoàn tất ${wonCount} lượt quay cho **${role.name}**!`,
-                embeds: [buildSingleDiscordRewardEmbed(storeName, role, charRewards, sessionRewardIcons)],
+                content: t("webhookDrawCompleteDiscord", { store: storeName, count: wonCount, name: role.name }, lang),
+                embeds: [buildSingleDiscordRewardEmbed(storeName, role, charRewards, sessionRewardIcons, lang)],
             };
             void sendWebhookMessage(notifyText, discordPayload);
             await new Promise(r => setTimeout(r, 500));
@@ -1404,8 +1437,9 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     const finalDrawsLeft = (filteredByFavorites && Number.isFinite(currentTotalDraws))
         ? currentTotalDraws
         : remaining;
+    const localeTag = lang === "vi" ? "vi-VN" : "en-US";
     try {
-        await setStoreData(mall, { drawsLeft: finalDrawsLeft, lastCheck: new Date().toLocaleString() }, accountId);
+        await setStoreData(mall, { drawsLeft: finalDrawsLeft, lastCheck: new Date().toLocaleString(localeTag) }, accountId);
     } catch (e) {
         console.warn("[LilithDraw] Could not refresh drawsLeft after runDraws:", e);
     }
@@ -1418,15 +1452,16 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
 
 
 async function getDrawHistory(token, roleOrRoleId, mall, accountId) {
+    const lang = await getLanguage();
     const character = (roleOrRoleId && typeof roleOrRoleId === "object")
         ? roleOrRoleId
         : await getCharacterById(token, roleOrRoleId, mall, accountId);
-    if (!character) throw new Error("Không tìm thấy thông tin nhân vật");
+    if (!character) throw new Error(t("characterNotFoundError", {}, lang));
 
-    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId));
+    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId), lang);
     const config = STORE_CONFIG[mall];
     const params = new URLSearchParams({
-        language: "vi", osType: "pc",
+        language: lang === "vi" ? "vi" : "en", osType: "pc",
         name: character.name, avatar: character.avatar,
         svrId: character.svrId, svrName: "", roleId: character.roleId,
         gmEnvId: "", bbxRegion: "global",
@@ -1452,7 +1487,8 @@ function formatDate(date) {
 
 async function autoSurvey(csrf, params) {
     if (typeof csrf !== "string" || !csrf || !params || typeof params !== "object") {
-        throw new Error("Thiếu mã CSRF hoặc tham số khảo sát");
+        const lang = await getLanguage();
+        throw new Error(t("missingSurveyParamsError", {}, lang));
     }
     const end = new Date();
     const start = new Date(end.getTime() - 3 * 60 * 1000);
@@ -1510,7 +1546,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 Date.now() - session.autoReloginStartedAt > 10 * 60 * 1000 ||
                 settings.autoReloginEnabled !== true
             ) {
-                sendResponse({ error: "Không có phiên đổi tài khoản hợp lệ" });
+                const lang = await getLanguage();
+                sendResponse({ error: t("invalidAccountSwitchSessionError", {}, lang) });
                 return;
             }
 
@@ -1521,8 +1558,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     autoReloginReadyAt: Date.now(),
                     autoReloginAccountSwitch: true,
                 });
+                const lang = await getLanguage();
                 await chrome.storage.local.set({
-                    autoReloginStatus: `Đã phát hiện yêu cầu chuyển tài khoản ${STORE_NAMES[msg.mall]}; đang chọn tài khoản mới.`,
+                    autoReloginStatus: t("accountSwitchDetectedStatus", { store: STORE_NAMES[msg.mall] }, lang),
                 });
             }
             sendResponse({ ok: true });
@@ -1541,18 +1579,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         (async () => {
             const accounts = await getStoreAccounts(msg.mall);
             const requestedIds = Array.isArray(msg.accountIds) ? msg.accountIds : [];
+            const lang = await getLanguage();
             if (
                 requestedIds.length === 0 ||
                 requestedIds.some(id => !accounts.some(account =>
                     account.id === id && account.username && account.password
                 ))
             ) {
-                sendResponse({ error: "Danh sách tài khoản kiểm tra không hợp lệ." });
+                sendResponse({ error: t("invalidTestAccountListError", {}, lang) });
                 return;
             }
             const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
             if (autoReloginEnabled !== true) {
-                sendResponse({ error: "Hãy bật Auto đăng nhập lại trước khi kiểm tra." });
+                sendResponse({ error: t("enableAutoReloginFirst", {}, lang) });
                 return;
             }
             const runningSession = await chrome.storage.session.get("autoReloginStartedAt");
@@ -1560,7 +1599,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 Number.isFinite(runningSession.autoReloginStartedAt) &&
                 Date.now() - runningSession.autoReloginStartedAt < 5 * 60 * 1000
             ) {
-                sendResponse({ error: "Một luồng đăng nhập lại đang chạy. Hãy chờ luồng đó hoàn tất rồi thử lại." });
+                sendResponse({ error: t("reloginFlowAlreadyRunningError", {}, lang) });
                 return;
             }
             const queue = requestedIds.map(id => ({ mall: msg.mall, accountId: id }));
@@ -1571,7 +1610,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             });
             const started = await openReloginWindow(msg.mall, requestedIds[0]);
             if (!started) {
-                void continueReloginSequence(msg.mall, requestedIds[0], "Không thể mở tab đăng nhập.").catch(error => {
+                void continueReloginSequence(msg.mall, requestedIds[0], t("cannotOpenLoginTabError", {}, lang)).catch(error => {
                     console.error("[LilithDraw] Could not continue account-check sequence:", error);
                 });
             }
@@ -1609,7 +1648,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 Date.now() - session.autoReloginStartedAt > 10 * 60 * 1000 ||
                 settings.autoReloginEnabled !== true
             ) {
-                sendResponse({ error: "Không có phiên tự đăng nhập hợp lệ" });
+                const lang = await getLanguage();
+                sendResponse({ error: t("noValidReloginSessionError", {}, lang) });
                 return;
             }
             sendResponse({
@@ -1637,6 +1677,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             } catch {
                 origin = "";
             }
+            const lang = await getLanguage();
             if (
                 !STORE_CONFIG[autoReloginMall] ||
                 origin !== RELOGIN_ORIGINS[autoReloginMall] ||
@@ -1645,26 +1686,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 !autoReloginStartedAt ||
                 Date.now() - autoReloginStartedAt > 10 * 60 * 1000
             ) {
-                sendResponse({ error: "Nguồn báo trạng thái đăng nhập không hợp lệ" });
+                sendResponse({ error: t("invalidReloginReportSourceError", {}, lang) });
                 return;
             }
+            const storeName = STORE_NAMES[autoReloginMall];
             await chrome.storage.local.set({
                 autoReloginStatus: msg.success
-                    ? `Đăng nhập ${STORE_NAMES[autoReloginMall]} thành công`
-                    : `Đăng nhập ${STORE_NAMES[autoReloginMall]} thất bại: ${String(msg.error || "Lỗi không xác định")}`,
+                    ? t("reloginSuccessStatus", { store: storeName }, lang)
+                    : t("reloginFailedStatus", { store: storeName, error: String(msg.error || t("unknownError", {}, lang)) }, lang),
             });
             if (!msg.success) {
                 void chrome.notifications.create({
                     type: "basic",
                     iconUrl: "images/icons/icon48.png",
-                    title: `Đăng nhập ${STORE_NAMES[autoReloginMall]} thất bại`,
-                    message: String(msg.error || "Lỗi không xác định"),
+                    title: t("reloginFailedNotificationTitle", { store: storeName }, lang),
+                    message: String(msg.error || t("unknownError", {}, lang)),
                 }).catch(() => {});
                 await clearReloginSession(autoReloginTabId);
                 await continueReloginSequence(
                     autoReloginMall,
                     autoReloginAccountId,
-                    String(msg.error || "Lỗi không xác định")
+                    String(msg.error || t("unknownError", {}, lang))
                 );
             }
             sendResponse({ ok: true });
@@ -1695,13 +1737,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.action === "refresh") {
         (async () => {
+            const lang = await getLanguage();
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
             const accountId = msg.accountId;
             const token = await getToken(mall, accountId);
-            if (!token) { sendResponse({ error: "Không có token", hasToken: false }); return; }
+            if (!token) { sendResponse({ error: t("noToken", {}, lang), hasToken: false }); return; }
             if (isJwtExpired(token)) {
                 await setStoreData(mall, { isValidToken: false }, accountId);
-                sendResponse({ error: "Token đã hết hạn", isValidToken: false, isExpired: true });
+                sendResponse({ error: t("tokenExpired", {}, lang), isValidToken: false, isExpired: true });
                 return;
             }
             try {
@@ -1728,7 +1771,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.action === "drawAll") {
         (async () => {
-            await autoDrawAllMalls("Quay tất cả");
+            await autoDrawAllMalls("triggerDrawAll");
             sendResponse({ ok: true });
         })().catch(error => sendResponse({ error: error.message }));
         return true;
@@ -1736,14 +1779,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.action === "testWebhook") {
         (async () => {
+            const lang = await getLanguage();
             const { webhookUrl } = await chrome.storage.local.get("webhookUrl");
             const urls = parseWebhookUrls(msg.url || webhookUrl);
             if (urls.length === 0) {
-                sendResponse({ ok: false, error: "Chưa có URL webhook nào hợp lệ." });
+                sendResponse({ ok: false, error: t("noValidWebhookUrlError", {}, lang) });
                 return;
             }
             const results = await Promise.allSettled(
-                urls.map(u => postSingleWebhook(u, msg.text || "🔔 [ROK Auto] Kiểm tra kết nối Webhook thành công!"))
+                urls.map(u => postSingleWebhook(u, msg.text || t("webhookTestMessage", {}, lang)))
             );
             const successCount = results.filter(r => r.status === "fulfilled" && r.value === true).length;
             const failure = results.find(r => r.status === "rejected")?.reason?.message;
@@ -1751,7 +1795,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 ok: successCount > 0,
                 successCount,
                 totalCount: urls.length,
-                error: successCount === 0 ? (failure || "Tất cả webhook đều gửi thất bại.") : undefined
+                error: successCount === 0 ? (failure || t("allWebhooksFailedError", {}, lang)) : undefined
             });
         })().catch(error => sendResponse({ ok: false, error: error.message }));
         return true;
@@ -1760,12 +1804,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === "drawNow") {
         let responseSent = false;
         (async () => {
+            const lang = await getLanguage();
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
             const accountId = msg.accountId;
             const profileKey = ask(mall, accountId, "draw");
             const lockKey = `lock_draw_${profileKey}`;
             if (activeDraws.has(profileKey) || (await isSessionLocked(lockKey, 5 * 60 * 1000))) {
-                sendResponse({ error: "Đang có lượt quay chạy cho cửa hàng này" });
+                sendResponse({ error: t("drawAlreadyRunningError", {}, lang) });
                 responseSent = true;
                 return;
             }
@@ -1775,13 +1820,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             try {
                 const token = await getToken(mall, accountId);
                 if (!token) {
-                    sendResponse({ error: "Không có token trong bộ nhớ. Vui lòng mở trang quay thưởng trước." });
+                    sendResponse({ error: t("noTokenInStorageError", {}, lang) });
                     responseSent = true;
                     return;
                 }
                 if (isJwtExpired(token)) {
                     await setStoreData(mall, { isValidToken: false }, accountId);
-                    sendResponse({ error: "Token đã hết hạn. Vui lòng lấy token mới hoặc đăng nhập lại." });
+                    sendResponse({ error: t("tokenExpiredReloginError", {}, lang) });
                     responseSent = true;
                     return;
                 }
@@ -1791,14 +1836,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     const freshDraws = await getTotalDrawsLeft(token, roles, mall, accountId);
                     if (freshDraws === 0) {
                         await chrome.storage.local.set({
-                            [ask(mall, accountId, "drawLog")]: ["Kiểm tra hoàn tất: không còn lượt quay nào."]
+                            [ask(mall, accountId, "drawLog")]: [t("checkCompleteNoDraws", {}, lang)]
                         });
                         sendResponse({ ok: true, drawsLeft: 0 });
                         responseSent = true;
                         return;
                     }
                 }
-                await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: ["Bắt đầu quay thưởng..."] });
+                await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: [t("startingDraw", {}, lang)] });
                 const log = await runDraws(token, mall, false, accountId, async currentLog => {
                     await chrome.storage.local.set({ [ask(mall, accountId, "drawLog")]: [...currentLog] });
                 });
@@ -1812,7 +1857,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 }
                 try {
                     await chrome.storage.local.set({
-                        [ask(mall, accountId, "drawLog")]: [`Lỗi khi quay thưởng: ${error.message}`]
+                        [ask(mall, accountId, "drawLog")]: [t("logDrawError", { error: error.message }, lang)]
                     });
                 } catch (storageError) {
                     console.error(`[LilithDraw][${mall}] Could not save draw error:`, storageError);
@@ -1832,13 +1877,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.action === "getDrawHistory") {
         (async () => {
+            const lang = await getLanguage();
             const mall = STORE_CONFIG[msg.mall] ? msg.mall : await getCurrentMall();
             const accountId = msg.accountId;
             const token = await getToken(mall, accountId);
-            if (!token) { sendResponse({ error: "Không có token" }); return; }
+            if (!token) { sendResponse({ error: t("noToken", {}, lang) }); return; }
             try {
                 const character = await getCharacterById(token, msg.roleId, mall, accountId);
-                if (!character) throw new Error("Không tìm thấy thông tin nhân vật");
+                if (!character) throw new Error(t("characterNotFoundError", {}, lang));
                 const history = await getDrawHistory(token, character, mall, accountId);
                 sendResponse({ history, character });
             } catch (e) {
@@ -1857,14 +1903,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 origin = "";
             }
             if (origin !== "https://q.lilithgame.com") {
-                throw new Error("Nguồn yêu cầu khảo sát không hợp lệ");
+                const lang = await getLanguage();
+                throw new Error(t("invalidSurveySourceError", {}, lang));
             }
             const json = await autoSurvey(msg.csrf, msg.params);
+            const lang = await getLanguage();
             await chrome.notifications.create({
                 type: "basic",
                 iconUrl: "images/icons/icon48.png",
                 title: "Auto Survey",
-                message: `Message: ${json?.msg ?? "Thành công"}, Code: ${json?.ret ?? "-"}`,
+                message: `Message: ${json?.msg ?? t("surveySuccessDefault", {}, lang)}, Code: ${json?.ret ?? "-"}`,
                 requireInteraction: false
             });
             sendResponse({ ok: true });
