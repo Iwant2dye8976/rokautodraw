@@ -84,6 +84,14 @@
           <span class="eyebrow">Nhân vật</span>
           <span class="draws-remaining" id="drawsRemaining">- lượt còn lại</span>
         </div>
+        <div class="char-filter-row">
+          <span class="input-label">Chỉ quay nhân vật yêu thích</span>
+          <label class="switch-toggle" for="drawFavoritesOnly">
+            <span class="settings-toggle-label" id="drawFavoritesOnlyLabel">Tắt</span>
+            <input id="drawFavoritesOnly" type="checkbox" role="switch" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
         <div class="char-search-wrap">
           <span class="char-search-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -344,9 +352,25 @@
         <section class="settings-section" aria-labelledby="rewardSummaryTitle">
           <div class="settings-section-head">
             <h3 class="settings-section-title" id="rewardSummaryTitle">Thống kê phần thưởng</h3>
+            <div class="segmented-control" role="radiogroup" aria-label="Phạm vi thống kê">
+              <label class="segmented-item">
+                <input type="radio" name="rewardStatsMode" value="weekly" checked />
+                <span>Tuần này</span>
+              </label>
+              <label class="segmented-item">
+                <input type="radio" name="rewardStatsMode" value="allTime" />
+                <span>Tất cả</span>
+              </label>
+            </div>
           </div>
           <div id="rewardTotalsList" class="reward-totals-list">
             <div class="login-note">Chưa có thống kê phần thưởng nào.</div>
+          </div>
+          <div id="weeklyLeaderboardWrap" class="leaderboard-wrap">
+            <div class="leaderboard-title">Bảng xếp hạng nhân phẩm tuần này</div>
+            <div id="weeklyLeaderboardList" class="leaderboard-list">
+              <div class="login-note">Chưa có dữ liệu nhân phẩm tuần này.</div>
+            </div>
           </div>
           <div class="btn-row">
             <button class="btn-util" id="exportRewardsCsvBtn" type="button">
@@ -363,7 +387,7 @@
         <section class="settings-section" aria-labelledby="configTitle">
           <h3 class="settings-section-title" id="configTitle">Xuất/nhập cấu hình</h3>
           <p class="login-note config-warning">
-            File xuất an toàn: không lưu mật khẩu. Mật khẩu cần nhập lại sau khi chuyển sang thiết bị mới.
+            Mặc định không lưu mật khẩu. Nếu nhập mật khẩu bảo vệ bên dưới, mật khẩu tài khoản sẽ được mã hóa AES-GCM trong file xuất.
           </p>
           <div class="config-selection-actions">
             <button class="btn-util" id="toggleAllConfigBtn" type="button">
@@ -376,6 +400,10 @@
             <span class="config-selection-count" id="configSelectionCount"></span>
           </div>
           <div class="config-options" aria-label="Chọn cài đặt cần xuất">
+            <label>
+              <input type="checkbox" value="drawFavoritesOnly" checked />
+              <span>Chỉ quay nhân vật yêu thích</span>
+            </label>
             <label>
               <input type="checkbox" value="autoReloginEnabled" checked />
               <span>Auto đăng nhập lại</span>
@@ -406,7 +434,7 @@
             </label>
             <label>
               <input type="checkbox" value="storeAccounts" />
-              <span>Tài khoản cửa hàng (không kèm mật khẩu)</span>
+              <span>Tài khoản cửa hàng</span>
             </label>
             <label>
               <input type="checkbox" value="favoriteRoleIds" />
@@ -417,6 +445,10 @@
               <span>Token</span>
             </label>
           </div>
+          <label class="login-field config-passphrase-field" for="configPassphraseInput">
+            <span class="input-label">Mật khẩu bảo vệ file (tùy chọn — lưu kèm mật khẩu tài khoản)</span>
+            <input id="configPassphraseInput" type="password" placeholder="Để trống nếu không cần lưu mật khẩu tài khoản…" autocomplete="new-password" spellcheck="false" />
+          </label>
           <div class="btn-row config-file-actions">
             <button class="btn-util" id="exportConfigBtn" type="button">Xuất cấu hình</button>
             <button class="btn-util" id="importConfigBtn" type="button">Nhập cấu hình</button>

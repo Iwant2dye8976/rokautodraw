@@ -5,6 +5,7 @@ const {
     STORE_NAMES,
     isReloginStoreUrl,
     accountStorageKey,
+    parseJwtPayload,
     getJwtExp,
     isJwtExpired,
     isExpiredTokenResponse,
@@ -19,6 +20,18 @@ const {
     normalizeSearchText,
     matchesSearch,
     toCsv,
+    stripStoreAccountsPasswords,
+    mergeRewardTotals,
+    buildExportSettings,
+    CONFIG_SETTING_VALIDATORS,
+    filterRolesForDraw,
+    getCurrentWeekKey,
+    getRewardPoints,
+    mergeWeeklyStats,
+    isJwtExpiringSoon,
+    getPreResetReloginTime,
+    encryptJsonWithPassphrase,
+    decryptJsonWithPassphrase,
 } = require("./utils.js");
 
 // --- 1. isJwtExpired & getJwtExp ---
@@ -36,6 +49,7 @@ test("isJwtExpired and getJwtExp correctly identify valid and expired tokens", (
 
     assert.equal(getJwtExp(makeJwt(futureExp)), futureExp);
     assert.equal(getJwtExp("not.a.jwt"), null);
+    assert.equal(parseJwtPayload(makeJwt(futureExp))?.client_id, "event_lglo");
 });
 
 // --- 2. isExpiredTokenResponse ---
@@ -126,28 +140,6 @@ test("relogin queue advances sequentially across multiple stores", () => {
 });
 
 // --- 8. Export storeAccounts password stripping & validation ---
-function stripStoreAccountsPasswords(storeAccounts) {
-    if (!storeAccounts || typeof storeAccounts !== "object") return storeAccounts;
-    const stripped = {};
-    for (const [mall, accounts] of Object.entries(storeAccounts)) {
-        stripped[mall] = Array.isArray(accounts)
-            ? accounts.map(acc => ({ id: acc.id, username: acc.username, password: "" }))
-            : [];
-    }
-    return stripped;
-}
-
-const validateStoreAccounts = value => value && typeof value === "object" &&
-    !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
-        Array.isArray(value[mall]) &&
-        value[mall].every(account =>
-            account && typeof account.id === "string" &&
-            /^[A-Za-z0-9-]+$/.test(account.id) &&
-            typeof account.username === "string" && typeof account.password === "string"
-        ) &&
-        new Set(value[mall].map(account => account?.id)).size === value[mall].length
-    );
-
 test("stripStoreAccountsPasswords removes plaintext passwords and passes validator", () => {
     const rawAccounts = {
         plutomall: [
@@ -164,7 +156,7 @@ test("stripStoreAccountsPasswords removes plaintext passwords and passes validat
     assert.equal(exported.lilithstore[0].password, "");
     assert.equal(exported.plutomall[0].username, "user1@example.com");
     assert.equal(exported.lilithstore[0].id, "acc-2");
-    assert.equal(validateStoreAccounts(exported), true, "Stripped accounts must pass schema validator");
+    assert.equal(CONFIG_SETTING_VALIDATORS.storeAccounts(exported), true, "Stripped accounts must pass schema validator");
 });
 
 // --- 9. getNextUtcResetTime & isUtcResetMissed ---
@@ -237,21 +229,12 @@ test("buildWebhookBody shapes Discord and Telegram payloads correctly", () => {
 });
 
 // --- 12. CONFIG_SETTING_VALIDATORS ---
-const validators = {
-    utcResetSyncEnabled: value => typeof value === "boolean",
-    webhookEnabled: value => typeof value === "boolean",
-    webhookUrl: value => typeof value === "string",
-    rewardTotals: value => value && typeof value === "object" && !Array.isArray(value),
-};
-
-test("validators correctly check new settings", () => {
-    assert.equal(validators.utcResetSyncEnabled(true), true);
-    assert.equal(validators.utcResetSyncEnabled("yes"), false);
-    assert.equal(validators.webhookEnabled(false), true);
-    assert.equal(validators.webhookUrl("https://discord.com"), true);
-    assert.equal(validators.webhookUrl(123), false);
-    assert.equal(validators.rewardTotals({ "200 Đá Quý": 5 }), true);
-    assert.equal(validators.rewardTotals([1, 2, 3]), false);
+test("validators correctly check settings", () => {
+    assert.equal(CONFIG_SETTING_VALIDATORS.webhookEnabled(false), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.webhookUrl("https://discord.com"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.webhookUrl(123), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals({ "200 Đá Quý": 5 }), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals([1, 2, 3]), false);
 });
 
 // --- 13. parseWebhookUrls ---
@@ -272,14 +255,6 @@ test("parseWebhookUrls handles multiple line-separated URLs, whitespace and inva
 });
 
 // --- 14. mergeRewardTotals ---
-function mergeRewardTotals(existing, sessionRewards) {
-    const totals = existing || {};
-    for (const [name, count] of Object.entries(sessionRewards)) {
-        totals[name] = (totals[name] || 0) + count;
-    }
-    return totals;
-}
-
 test("mergeRewardTotals handles null and undefined existing storage without throwing", () => {
     const resNull = mergeRewardTotals(null, { "200 Đá Quý": 2 });
     assert.equal(resNull["200 Đá Quý"], 2);
@@ -293,31 +268,6 @@ test("mergeRewardTotals handles null and undefined existing storage without thro
 });
 
 // --- 15. buildExportSettings ---
-function buildExportSettings(selectedKeys, storedSettings, currentSettings) {
-    const storageKeys = selectedKeys.slice();
-    if (selectedKeys.includes("webhookEnabled") && !storageKeys.includes("webhookUrl")) {
-        storageKeys.push("webhookUrl");
-    }
-    const settings = {};
-    for (const key of selectedKeys) {
-        if (Object.prototype.hasOwnProperty.call(storedSettings, key)) {
-            settings[key] = storedSettings[key];
-        } else if (Object.prototype.hasOwnProperty.call(currentSettings, key)) {
-            settings[key] = currentSettings[key];
-        }
-    }
-    if (selectedKeys.includes("autoCheckMode") && !storageKeys.includes("utcResetDay")) {
-        storageKeys.push("utcResetDay");
-    }
-    if (selectedKeys.includes("webhookEnabled") && typeof storedSettings.webhookUrl === "string") {
-        settings.webhookUrl = storedSettings.webhookUrl;
-    }
-    if (selectedKeys.includes("autoCheckMode") && (storedSettings.utcResetDay || currentSettings.utcResetDay)) {
-        settings.utcResetDay = storedSettings.utcResetDay || currentSettings.utcResetDay || "5";
-    }
-    return settings;
-}
-
 test("buildExportSettings automatically bundles webhookUrl when webhookEnabled is selected", () => {
     const selected = ["theme", "webhookEnabled"];
     const stored = { theme: "dark", webhookEnabled: true, webhookUrl: "https://discord.com/api/webhooks/test" };
@@ -339,18 +289,14 @@ test("buildExportSettings bundles utcResetDay when autoCheckMode is selected", (
 });
 
 // --- 16. autoCheckMode validator and alarm sync logic ---
-const autoCheckValidators = {
-    autoCheckMode: value => typeof value === "string" && ["utcReset", "interval"].includes(value),
-};
-
 test("autoCheckMode validator validates correct modes and rejects invalid values", () => {
-    assert.equal(autoCheckValidators.autoCheckMode("utcReset"), true);
-    assert.equal(autoCheckValidators.autoCheckMode("interval"), true);
-    assert.equal(autoCheckValidators.autoCheckMode("daily"), false);
-    assert.equal(autoCheckValidators.autoCheckMode(""), false);
-    assert.equal(autoCheckValidators.autoCheckMode(null), false);
-    assert.equal(autoCheckValidators.autoCheckMode(undefined), false);
-    assert.equal(autoCheckValidators.autoCheckMode(123), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode("utcReset"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode("interval"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode("daily"), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode(""), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode(null), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode(undefined), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode(123), false);
 });
 
 function simulateSyncAutoCheckAlarms({ enabled, mode, intervalMinutes, utcResetDay }) {
@@ -479,3 +425,85 @@ test("buildSingleDiscordRewardEmbed generates single embed matching template", (
     assert.equal(embed.footer.text, "Plutomall • Lucky Draw System");
     assert.equal(typeof embed.timestamp, "string");
 });
+
+// --- 20. Feature #2: filterRolesForDraw ---
+test("filterRolesForDraw filters to favorites when enabled and falls back to all when no favorites match", () => {
+    const roles = [
+        { roleId: "1", name: "Farm" },
+        { roleId: "2", name: "Main" },
+    ];
+    const filtered = filterRolesForDraw(roles, ["2"], true);
+    assert.equal(filtered.filteredByFavorites, true);
+    assert.deepEqual(filtered.rolesToDraw.map(r => r.roleId), ["2"]);
+
+    const fallback = filterRolesForDraw(roles, [], true);
+    assert.equal(fallback.filteredByFavorites, false);
+    assert.equal(fallback.rolesToDraw.length, 2);
+});
+
+// --- 21. Feature #4: getCurrentWeekKey, getRewardPoints, mergeWeeklyStats ---
+test("getCurrentWeekKey respects Friday 00:05 UTC reset boundary", () => {
+    const friBefore = new Date(Date.UTC(2026, 9, 30, 0, 2, 0));
+    assert.equal(getCurrentWeekKey(friBefore), "2026-10-23");
+
+    const friAfter = new Date(Date.UTC(2026, 9, 30, 0, 6, 0));
+    assert.equal(getCurrentWeekKey(friAfter), "2026-10-30");
+
+    const tue = new Date(Date.UTC(2026, 10, 3, 12, 0, 0));
+    assert.equal(getCurrentWeekKey(tue), "2026-10-30");
+});
+
+test("getRewardPoints and mergeWeeklyStats accumulate scores and roll over on new weekKey", () => {
+    assert.equal(getRewardPoints("2.000 Đá Quý"), 2000);
+    assert.equal(getRewardPoints("Tăng tốc 24 giờ"), 1500);
+    assert.equal(getRewardPoints("Rương Tự Chọn Vật Liệu Trang Bị"), 1400);
+    assert.equal(getRewardPoints("Tăng tốc 8 giờ"), 600);
+    assert.equal(getRewardPoints("500 Đá Quý"), 500);
+    assert.equal(getRewardPoints("Tăng tốc 3 giờ"), 300);
+    assert.equal(getRewardPoints("200 Đá Quý"), 200);
+    assert.equal(getRewardPoints("Unknown Item"), 100);
+
+    const oldStats = { weekKey: "2026-10-23", rewardTotals: { "200 Đá Quý": 5 }, characterScores: {} };
+    const nextStats = mergeWeeklyStats(oldStats, "2026-10-30", "plutomall", [
+        {
+            role: { roleId: "101", name: "SunTzu", svrId: "1001" },
+            rewards: { "2.000 Đá Quý": 1, "Tăng tốc 3 giờ": 2 }
+        }
+    ]);
+    assert.equal(nextStats.weekKey, "2026-10-30");
+    assert.equal(nextStats.rewardTotals["200 Đá Quý"], undefined, "Old week must be discarded");
+    assert.equal(nextStats.rewardTotals["2.000 Đá Quý"], 1);
+    assert.equal(nextStats.characterScores["plutomall:101"].score, 2600);
+    assert.equal(nextStats.characterScores["plutomall:101"].draws, 3);
+});
+
+// --- 22. Feature #5: isJwtExpiringSoon & getPreResetReloginTime ---
+test("isJwtExpiringSoon and getPreResetReloginTime handle pre-reset window", () => {
+    const nowMs = Date.UTC(2026, 9, 29, 23, 50, 0);
+    const expIn10Min = Math.floor((nowMs + 10 * 60 * 1000) / 1000);
+    const expIn2Hours = Math.floor((nowMs + 120 * 60 * 1000) / 1000);
+    const makeJwt = exp => `header.${btoa(JSON.stringify({ exp }))}.sig`;
+
+    assert.equal(isJwtExpiringSoon(makeJwt(expIn10Min), 30 * 60 * 1000, nowMs), true);
+    assert.equal(isJwtExpiringSoon(makeJwt(expIn2Hours), 30 * 60 * 1000, nowMs), false);
+
+    const insideWindow = Date.UTC(2026, 9, 29, 23, 55, 0);
+    const nextPreReset = getPreResetReloginTime("5", insideWindow);
+    assert.equal(nextPreReset > insideWindow, true);
+    assert.equal(new Date(nextPreReset).getUTCDate(), 5, "Next pre-reset is Thursday Nov 5 at 23:50 UTC");
+});
+
+// --- 23. Feature #6: encryptJsonWithPassphrase & decryptJsonWithPassphrase ---
+test("encryptJsonWithPassphrase and decryptJsonWithPassphrase round-trip and reject wrong passphrase", async () => {
+    const payload = { plutomall: [{ id: "a1", username: "u", password: "secret" }], lilithstore: [] };
+    const encrypted = await encryptJsonWithPassphrase(payload, "correct-horse");
+    assert.equal(typeof encrypted.data, "string");
+    const decrypted = await decryptJsonWithPassphrase(encrypted, "correct-horse");
+    assert.deepEqual(decrypted, payload);
+
+    await assert.rejects(
+        () => decryptJsonWithPassphrase(encrypted, "wrong-passphrase"),
+        /Mật khẩu giải mã không đúng/
+    );
+});
+

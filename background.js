@@ -145,6 +145,54 @@ const RELOGIN_SEQUENCE_KEYS = [
     "autoReloginQueueFailures",
 ];
 
+const RELOGIN_SESSION_KEYS = [
+    "autoReloginWindowId",
+    "autoReloginTabId",
+    "autoReloginStartedAt",
+    "autoReloginMall",
+    "autoReloginAccountId",
+    "autoReloginReturnedAt",
+    "autoReloginReadyAt",
+    "autoReloginAccountSwitch",
+];
+
+async function clearReloginSession(tabId, includeSequence = false) {
+    if (Number.isInteger(tabId)) {
+        try {
+            await chrome.tabs.remove(tabId);
+        } catch {}
+    }
+    await chrome.storage.session.remove(
+        includeSequence ? [...RELOGIN_SESSION_KEYS, ...RELOGIN_SEQUENCE_KEYS] : RELOGIN_SESSION_KEYS
+    );
+}
+
+async function enqueueOrOpenRelogin(mall, accountId) {
+    const session = await chrome.storage.session.get([
+        "autoReloginStartedAt",
+        "autoReloginMall",
+        "autoReloginAccountId",
+        "autoReloginQueue",
+        "autoReloginQueueIndex",
+    ]);
+    const isRunning = Number.isFinite(session.autoReloginStartedAt) &&
+        Date.now() - session.autoReloginStartedAt < 5 * 60 * 1000;
+    if (isRunning && (session.autoReloginMall !== mall || session.autoReloginAccountId !== accountId)) {
+        const queue = Array.isArray(session.autoReloginQueue) && session.autoReloginQueue.length > 0
+            ? [...session.autoReloginQueue]
+            : [{ mall: session.autoReloginMall, accountId: session.autoReloginAccountId }];
+        if (!queue.some(item => item.mall === mall && item.accountId === accountId)) {
+            queue.push({ mall, accountId });
+            await chrome.storage.session.set({
+                autoReloginQueue: queue,
+                autoReloginQueueIndex: session.autoReloginQueueIndex ?? 0,
+            });
+        }
+        return true;
+    }
+    return openReloginWindow(mall, accountId);
+}
+
 async function continueReloginSequence(expectedMall, expectedAccountId, failure) {
     const session = await chrome.storage.session.get(RELOGIN_SEQUENCE_KEYS);
     const queue = session.autoReloginQueue;
@@ -265,7 +313,7 @@ async function fetchJson(url, options = {}, accountId, retries = 1) {
             const mall = detectMallFromUrl(url);
             if (mall) {
                 void setStoreData(mall, { isValidToken: false }, accountId);
-                void openReloginWindow(mall, accountId);
+                void enqueueOrOpenRelogin(mall, accountId);
             }
         }
 
@@ -281,7 +329,7 @@ async function fetchJson(url, options = {}, accountId, retries = 1) {
             const mall = detectMallFromUrl(url);
             if (mall) {
                 void setStoreData(mall, { isValidToken: false }, accountId);
-                void openReloginWindow(mall, accountId);
+                void enqueueOrOpenRelogin(mall, accountId);
             }
             const error = new Error(
                 json?.msg || json?.message || "Token đã hết hạn"
@@ -347,20 +395,7 @@ async function openReloginWindow(mall, accountId) {
                 });
                 return true;
             } catch {
-                if (Number.isInteger(session.autoReloginTabId)) {
-                    try { await chrome.tabs.remove(session.autoReloginTabId); } catch {}
-                }
-                await chrome.storage.session.remove([
-                    "autoReloginWindowId",
-                    "autoReloginTabId",
-                    "autoReloginStartedAt",
-                    "autoReloginMall",
-                    "autoReloginAccountId",
-                    "autoReloginReturnedAt",
-                    "autoReloginReadyAt",
-                    "autoReloginAccountSwitch",
-                    ...RELOGIN_SEQUENCE_KEYS,
-                ]);
+                await clearReloginSession(session.autoReloginTabId, true);
             }
         } else if (Number.isInteger(session.autoReloginTabId)) {
             try { await chrome.tabs.remove(session.autoReloginTabId); } catch {}
@@ -402,17 +437,7 @@ async function openReloginWindow(mall, accountId) {
         });
         const currentSettings = await chrome.storage.local.get("autoReloginEnabled");
         if (currentSettings.autoReloginEnabled !== true) {
-            await chrome.tabs.remove(reloginTab.id);
-            await chrome.storage.session.remove([
-                "autoReloginWindowId",
-                "autoReloginTabId",
-                "autoReloginStartedAt",
-                "autoReloginMall",
-                "autoReloginAccountId",
-                "autoReloginReturnedAt",
-                "autoReloginReadyAt",
-                "autoReloginAccountSwitch",
-            ]);
+            await clearReloginSession(reloginTab.id);
             return false;
         }
         await chrome.storage.local.set({
@@ -509,17 +534,11 @@ chrome.webRequest.onSendHeaders.addListener(
                 const appId = urlObj.searchParams.get("appId");
 
                 const storeUpdate = {};
-                const tokenPart = token.replace(/^Bearer\s+/i, "").split(".")[1];
-                if (tokenPart) {
-                    const base64 = tokenPart.replace(/-/g, "+").replace(/_/g, "/");
-                    const payload = JSON.parse(
-                        atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="))
-                    );
-                    if (payload.client_id === "event_lglo") {
-                        storeUpdate.token = token;
-                        storeUpdate.tokenTimestamp = Date.now();
-                        storeUpdate.isValidToken = true;
-                    }
+                const payload = parseJwtPayload(token);
+                if (payload?.client_id === "event_lglo") {
+                    storeUpdate.token = token;
+                    storeUpdate.tokenTimestamp = Date.now();
+                    storeUpdate.isValidToken = true;
                 }
 
                 if (appUid && appId) {
@@ -543,6 +562,7 @@ chrome.webRequest.onSendHeaders.addListener(
 
 
 const UTC_RESET_ALARM = "utcResetCheck";
+const UTC_PRE_RESET_ALARM = "utcPreResetRelogin";
 
 async function checkAndCatchUpUtcReset() {
     try {
@@ -590,10 +610,12 @@ async function syncAutoCheckAlarms() {
 
         let intervalAlarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
         let utcAlarm = await chrome.alarms.get(UTC_RESET_ALARM);
+        let preResetAlarm = await chrome.alarms.get(UTC_PRE_RESET_ALARM);
 
         if (!enabled) {
             if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
             if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
+            if (preResetAlarm) await chrome.alarms.clear(UTC_PRE_RESET_ALARM);
             console.log("[LilithDraw] Automatic check is disabled");
             return;
         }
@@ -603,8 +625,8 @@ async function syncAutoCheckAlarms() {
             const periodInMinutes = (utcResetDay === "everyday" || utcResetDay === "daily")
                 ? 24 * 60
                 : 7 * 24 * 60;
-            if (!utcAlarm || utcAlarm.periodInMinutes !== periodInMinutes) {
-                const nextTime = getNextUtcResetTime(utcResetDay);
+            const nextTime = getNextUtcResetTime(utcResetDay);
+            if (!utcAlarm || utcAlarm.periodInMinutes !== periodInMinutes || Math.abs(utcAlarm.scheduledTime - nextTime) > 1000) {
                 if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
                 await chrome.alarms.create(UTC_RESET_ALARM, { when: nextTime, periodInMinutes });
                 utcAlarm = await chrome.alarms.get(UTC_RESET_ALARM);
@@ -612,9 +634,15 @@ async function syncAutoCheckAlarms() {
                     console.log(`[LilithDraw] UTC reset alarm active (${utcResetDay}); next at ${new Date(utcAlarm.scheduledTime).toUTCString()}`);
                 }
             }
+            const nextPreResetTime = getPreResetReloginTime(utcResetDay);
+            if (!preResetAlarm || preResetAlarm.periodInMinutes !== periodInMinutes || Math.abs(preResetAlarm.scheduledTime - nextPreResetTime) > 1000) {
+                if (preResetAlarm) await chrome.alarms.clear(UTC_PRE_RESET_ALARM);
+                await chrome.alarms.create(UTC_PRE_RESET_ALARM, { when: nextPreResetTime, periodInMinutes });
+            }
         } else {
             // "interval" mode (custom interval)
             if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
+            if (preResetAlarm) await chrome.alarms.clear(UTC_PRE_RESET_ALARM);
             if (!intervalAlarm || intervalAlarm.periodInMinutes !== intervalMinutes) {
                 if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
                 await chrome.alarms.create(AUTO_CHECK_ALARM, { periodInMinutes: intervalMinutes });
@@ -673,23 +701,50 @@ chrome.alarms.onAlarm.addListener((alarm) => {
             await chrome.storage.local.set({ lastUtcResetDate: todayStr });
             await autoDrawAllMalls("Reset 00:05 UTC");
         })().catch(error => console.error("[LilithDraw] Scheduled UTC reset check failed:", error));
+    } else if (alarm.name === UTC_PRE_RESET_ALARM) {
+        console.log("[LilithDraw] Pre-reset proactive relogin alarm fired");
+        void proactiveReloginExpiringAccounts().catch(error =>
+            console.error("[LilithDraw] Pre-reset proactive relogin failed:", error)
+        );
     }
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === "local") {
-        if (changes.currentMall || changes.activeAccountIds) {
-            void updateBadge().catch(() => {});
+    if (areaName !== "local") return;
+    if (changes.currentMall || changes.activeAccountIds) {
+        void updateBadge().catch(() => {});
+    }
+    if (
+        changes.autoCheckEnabled ||
+        changes.autoCheckMode ||
+        changes.autoCheckIntervalMinutes ||
+        changes.utcResetDay
+    ) {
+        void syncAutoCheckAlarms();
+        void checkAndCatchUpUtcReset();
+    }
+    for (const mall of Object.keys(STORE_CONFIG)) {
+        const accountChanges = Object.keys(changes)
+            .map(key => {
+                const match = key.match(new RegExp(`^${mall}_account_(.+)_(?:tokenTimestamp|appUid|appId)$`));
+                return match?.[1];
+            })
+            .filter(Boolean);
+        if (changes[sk(mall, "tokenTimestamp")] || changes[sk(mall, "appUid")] || changes[sk(mall, "appId")]) {
+            accountChanges.push(undefined);
         }
-        if (
-            changes.autoCheckEnabled ||
-            changes.autoCheckMode ||
-            changes.autoCheckIntervalMinutes ||
-            changes.utcResetDay
-        ) {
-            void syncAutoCheckAlarms();
-            void checkAndCatchUpUtcReset();
+        for (const accountId of new Set(accountChanges)) {
+            void refreshStoreAfterRelogin(mall, accountId).catch(error => {
+                console.error(`[LilithDraw] Could not refresh after ${mall} token capture:`, error);
+            });
         }
+    }
+    if (changes.autoReloginEnabled?.newValue === false) {
+        void (async () => {
+            const { autoReloginTabId } = await chrome.storage.session.get("autoReloginTabId");
+            await clearReloginSession(autoReloginTabId, true);
+            await chrome.storage.local.remove("autoReloginStatus");
+        })().catch(error => console.error("[LilithDraw] Could not clear relogin data:", error));
     }
 });
 
@@ -754,21 +809,7 @@ async function refreshStoreAfterRelogin(mall, accountId) {
         });
         console.error(`[LilithDraw] Refresh after ${STORE_NAMES[mall]} relogin failed:`, error);
     } finally {
-        await chrome.storage.session.remove([
-            "autoReloginWindowId",
-            "autoReloginTabId",
-            "autoReloginStartedAt",
-            "autoReloginMall",
-            "autoReloginAccountId",
-            "autoReloginReturnedAt",
-            "autoReloginReadyAt",
-            "autoReloginAccountSwitch",
-        ]);
-        if (Number.isInteger(autoReloginTabId)) {
-            try {
-                await chrome.tabs.remove(autoReloginTabId);
-            } catch {}
-        }
+        await clearReloginSession(autoReloginTabId);
         activeReloginRefreshes.delete(autoReloginTabId);
         await continueReloginSequence(mall, accountId, refreshError);
     }
@@ -910,52 +951,50 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     });
 });
 
-chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local") return;
-    for (const mall of Object.keys(STORE_CONFIG)) {
-        const accountChanges = Object.keys(changes)
-            .map(key => {
-                const match = key.match(new RegExp(`^${mall}_account_(.+)_(?:tokenTimestamp|appUid|appId)$`));
-                return match?.[1];
-            })
-            .filter(Boolean);
-        if (changes[sk(mall, "tokenTimestamp")] || changes[sk(mall, "appUid")] || changes[sk(mall, "appId")]) {
-            accountChanges.push(undefined);
-        }
-        for (const accountId of new Set(accountChanges)) {
-            void refreshStoreAfterRelogin(mall, accountId).catch(error => {
-                console.error(`[LilithDraw] Could not refresh after ${mall} token capture:`, error);
-            });
-        }
-    }
-});
-
-chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || changes.autoReloginEnabled?.newValue !== false) return;
-    void (async () => {
-        const { autoReloginTabId } = await chrome.storage.session.get("autoReloginTabId");
-        if (Number.isInteger(autoReloginTabId)) {
-            try {
-                await chrome.tabs.remove(autoReloginTabId);
-            } catch (error) {
-                if (!/No tab with id/i.test(error.message)) throw error;
+async function enqueueExpiredAccounts(expiredQueue) {
+    if (expiredQueue.length === 0) return;
+    const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
+    if (autoReloginEnabled !== true) return;
+    const session = await chrome.storage.session.get(["autoReloginStartedAt", "autoReloginQueue"]);
+    const isRunning = Number.isFinite(session.autoReloginStartedAt) &&
+        Date.now() - session.autoReloginStartedAt < 5 * 60 * 1000;
+    if (isRunning) {
+        const merged = Array.isArray(session.autoReloginQueue) ? [...session.autoReloginQueue] : [];
+        for (const item of expiredQueue) {
+            if (!merged.some(q => q.mall === item.mall && q.accountId === item.accountId)) {
+                merged.push(item);
             }
         }
-        await chrome.storage.session.remove([
-            "autoReloginWindowId",
-            "autoReloginTabId",
-            "autoReloginStartedAt",
-            "autoReloginMall",
-            "autoReloginAccountId",
-            "autoReloginReturnedAt",
-            "autoReloginReadyAt",
-            "autoReloginAccountSwitch",
-        ]);
-        await chrome.storage.local.remove([
-            "autoReloginStatus",
-        ]);
-    })().catch(error => console.error("[LilithDraw] Could not clear relogin data:", error));
-});
+        await chrome.storage.session.set({ autoReloginQueue: merged });
+    } else {
+        await chrome.storage.session.set({
+            autoReloginQueue: expiredQueue,
+            autoReloginQueueIndex: 0,
+            autoReloginQueueFailures: [],
+        });
+        await openReloginWindow(expiredQueue[0].mall, expiredQueue[0].accountId);
+    }
+}
+
+async function proactiveReloginExpiringAccounts() {
+    const data = await chrome.storage.local.get(["autoCheckEnabled", "autoCheckMode", "autoReloginEnabled"]);
+    if (data.autoCheckEnabled === false || (data.autoCheckMode || "utcReset") !== "utcReset" || data.autoReloginEnabled !== true) {
+        return;
+    }
+    const expiringQueue = [];
+    for (const mall of Object.keys(STORE_CONFIG)) {
+        const accounts = await getStoreAccounts(mall);
+        const profiles = accounts.length > 0 ? accounts : [{ id: undefined }];
+        for (const account of profiles) {
+            const accountId = account.id;
+            const { token, isValidToken } = await getStoreData(mall, accountId);
+            if (!token || isValidToken === false || isJwtExpiringSoon(token, 30 * 60 * 1000)) {
+                expiringQueue.push({ mall, accountId });
+            }
+        }
+    }
+    await enqueueExpiredAccounts(expiringQueue);
+}
 
 async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
     const expiredQueue = [];
@@ -972,6 +1011,10 @@ async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
                     continue;
                 }
                 await autoDrawMall(mall, trigger, accountId);
+                const { isValidToken } = await getStoreData(mall, accountId);
+                if (token && isValidToken === false && !expiredQueue.some(item => item.mall === mall && item.accountId === accountId)) {
+                    expiredQueue.push({ mall, accountId });
+                }
             } catch (e) {
                 console.error(
                     `[LilithDraw][${mall}][${accountId}] Scheduled draw failed:`,
@@ -980,17 +1023,7 @@ async function autoDrawAllMalls(trigger = "Kiểm tra tự động") {
             }
         }
     }
-    if (expiredQueue.length > 0) {
-        const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
-        if (autoReloginEnabled === true) {
-            await chrome.storage.session.set({
-                autoReloginQueue: expiredQueue,
-                autoReloginQueueIndex: 0,
-                autoReloginQueueFailures: [],
-            });
-            await openReloginWindow(expiredQueue[0].mall, expiredQueue[0].accountId);
-        }
-    }
+    await enqueueExpiredAccounts(expiredQueue);
 }
 
 async function autoDrawMall(mall, trigger, accountId) {
@@ -1017,7 +1050,7 @@ async function autoDrawMall(mall, trigger, accountId) {
             await chrome.storage.local.set({
                 [ask(mall, accountId, "drawLog")]: [`${trigger} lúc ${checkedAt}`, "Bỏ qua: Token đã hết hạn, kích hoạt tự đăng nhập lại..."],
             });
-            void openReloginWindow(mall, accountId);
+            void enqueueOrOpenRelogin(mall, accountId);
             return;
         }
         const roles = await getRoles(token, mall, true, accountId);
@@ -1149,8 +1182,8 @@ async function getTotalDrawsLeft(token, roles, mall, accountId) {
     return total;
 }
 
-async function drawOnce(token, role, mall, accountId) {
-    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId));
+async function drawOnce(token, role, mall, accountId, cachedIdentifiers) {
+    const identifiers = cachedIdentifiers || getAppIdentifiers(await getStoreData(mall, accountId));
     const config = STORE_CONFIG[mall];
     const rolePayload = {
         name: role.name, avatar: role.avatar,
@@ -1186,15 +1219,16 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     const sessionRewards = {};
     const sessionRewardIcons = {};
     const roleRewards = new Map();
+    let flushedRewards = false;
     const flushSessionRewards = async () => {
-        if (Object.keys(sessionRewards).length === 0) return;
+        if (flushedRewards || Object.keys(sessionRewards).length === 0) return;
+        flushedRewards = true;
         try {
-            const data = await chrome.storage.local.get("rewardTotals");
-            const rewardTotals = data.rewardTotals || {};
-            for (const [name, count] of Object.entries(sessionRewards)) {
-                rewardTotals[name] = (rewardTotals[name] || 0) + count;
-            }
-            await chrome.storage.local.set({ rewardTotals });
+            const data = await chrome.storage.local.get(["rewardTotals", "weeklyStats"]);
+            const rewardTotals = mergeRewardTotals(data.rewardTotals, sessionRewards);
+            const roleRewardsEntries = [...roleRewards.entries()].map(([role, rewards]) => ({ role, rewards }));
+            const weeklyStats = mergeWeeklyStats(data.weeklyStats, getCurrentWeekKey(), mall, roleRewardsEntries);
+            await chrome.storage.local.set({ rewardTotals, weeklyStats });
         } catch (e) {
             console.warn("[LilithDraw] Could not flush reward totals:", e);
         }
@@ -1226,26 +1260,36 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
         return log;
     }
 
-    // Sắp xếp roles ưu tiên các nhân vật yêu thích (favoriteRoleIds)
+    // Sắp xếp hoặc lọc roles theo các nhân vật yêu thích (favoriteRoleIds & drawFavoritesOnly)
+    let filteredByFavorites = false;
     try {
         const favKey = ask(mall, accountId, "favoriteRoleIds");
         const legacyFavKey = `${mall}_favoriteRoleIds`;
-        const favData = await chrome.storage.local.get([favKey, legacyFavKey]);
+        const favData = await chrome.storage.local.get([favKey, legacyFavKey, "drawFavoritesOnly"]);
         const favIds = Array.isArray(favData[favKey])
             ? favData[favKey].map(String)
             : Array.isArray(favData[legacyFavKey])
                 ? favData[legacyFavKey].map(String)
                 : [];
-        if (favIds.length > 0) {
-            const favSet = new Set(favIds);
-            roles = [
-                ...roles.filter(r => favSet.has(String(r.roleId ?? ""))),
-                ...roles.filter(r => !favSet.has(String(r.roleId ?? "")))
-            ];
+        const totalRolesCount = roles.length;
+        const normalizedRoles = roles.map(r => ({ ...r, roleId: String(r.roleId ?? "") }));
+        const filtered = filterRolesForDraw(normalizedRoles, favIds, Boolean(favData.drawFavoritesOnly));
+        roles = filtered.rolesToDraw;
+        filteredByFavorites = filtered.filteredByFavorites;
+        if (filteredByFavorites) {
+            log.push(`Chỉ quay nhân vật yêu thích: lọc ${roles.length}/${totalRolesCount} nhân vật`);
+            await reportProgress();
         }
     } catch (err) {
-        console.warn("[LilithDraw] Could not sort roles by favorite:", err);
+        console.warn("[LilithDraw] Could not sort/filter roles by favorite:", err);
     }
+
+    const initialStoreData = await getStoreData(mall, accountId);
+    let cachedIdentifiers = null;
+    try {
+        cachedIdentifiers = getAppIdentifiers(initialStoreData);
+    } catch {}
+    let currentTotalDraws = Number(initialStoreData.drawsLeft);
 
     let remaining = 0;
     for (const role of roles) {
@@ -1268,7 +1312,7 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                         return log;
                     }
                     try {
-                        const result = await drawOnce(token, role, mall, accountId);
+                        const result = await drawOnce(token, role, mall, accountId, cachedIdentifiers);
                         const rewardId = result?.data?.rewardId;
                         const reward = REWARDS[rewardId] || result?.data?.reward ||
                             (rewardId ? `Phần thưởng ${rewardId}` : null);
@@ -1285,14 +1329,13 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
                         await reportProgress();
 
                         // Cập nhật drawsLeft giảm dần trong storage theo thời gian thực
-                        try {
-                            const storeData = await getStoreData(mall, accountId);
-                            const currentDraws = Number(storeData.drawsLeft);
-                            if (Number.isFinite(currentDraws) && currentDraws > 0) {
-                                await setStoreData(mall, { drawsLeft: Math.max(0, currentDraws - 1) }, accountId);
+                        if (Number.isFinite(currentTotalDraws) && currentTotalDraws > 0) {
+                            currentTotalDraws = Math.max(0, currentTotalDraws - 1);
+                            try {
+                                await setStoreData(mall, { drawsLeft: currentTotalDraws }, accountId);
+                            } catch (e) {
+                                console.warn("[LilithDraw] Could not decrement drawsLeft:", e);
                             }
-                        } catch (e) {
-                            console.warn("[LilithDraw] Could not decrement drawsLeft:", e);
                         }
 
                         if (drawCount > 0) {
@@ -1357,8 +1400,12 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     }
 
     // Draws left = what each role still had after its loop; avoids re-fetching every manifest.
+    // When filteredByFavorites is true, non-favorite roles weren't looped, so keep decremented currentTotalDraws.
+    const finalDrawsLeft = (filteredByFavorites && Number.isFinite(currentTotalDraws))
+        ? currentTotalDraws
+        : remaining;
     try {
-        await setStoreData(mall, { drawsLeft: remaining, lastCheck: new Date().toLocaleString() }, accountId);
+        await setStoreData(mall, { drawsLeft: finalDrawsLeft, lastCheck: new Date().toLocaleString() }, accountId);
     } catch (e) {
         console.warn("[LilithDraw] Could not refresh drawsLeft after runDraws:", e);
     }
@@ -1613,21 +1660,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     title: `Đăng nhập ${STORE_NAMES[autoReloginMall]} thất bại`,
                     message: String(msg.error || "Lỗi không xác định"),
                 }).catch(() => {});
-                await chrome.storage.session.remove([
-                    "autoReloginWindowId",
-                    "autoReloginTabId",
-                    "autoReloginStartedAt",
-                    "autoReloginMall",
-                    "autoReloginAccountId",
-                    "autoReloginReturnedAt",
-                    "autoReloginReadyAt",
-                    "autoReloginAccountSwitch",
-                ]);
-                if (Number.isInteger(autoReloginTabId)) {
-                    try {
-                        await chrome.tabs.remove(autoReloginTabId);
-                    } catch {}
-                }
+                await clearReloginSession(autoReloginTabId);
                 await continueReloginSequence(
                     autoReloginMall,
                     autoReloginAccountId,

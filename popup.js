@@ -9,6 +9,8 @@ const charList = document.getElementById("charList");
 const charSearchInput = document.getElementById("charSearchInput");
 const clearCharSearchBtn = document.getElementById("clearCharSearchBtn");
 const totalDrawsEl = document.getElementById("drawsRemaining");
+const drawFavoritesOnlyCheckbox = document.getElementById("drawFavoritesOnly");
+const drawFavoritesOnlyLabel = document.getElementById("drawFavoritesOnlyLabel");
 const autoCheckCheckbox = document.getElementById("autoCheckEnabled");
 const autoCheckToggleLabel = document.getElementById("autoCheckToggleLabel");
 const autoCheckIntervalInput = document.getElementById("autoCheckIntervalMinutes");
@@ -118,6 +120,9 @@ for (const radio of themeRadios) {
 })();
 
 function updateSwitchToggleLabels() {
+    if (drawFavoritesOnlyLabel && drawFavoritesOnlyCheckbox) {
+        drawFavoritesOnlyLabel.textContent = drawFavoritesOnlyCheckbox.checked ? "Bật" : "Tắt";
+    }
     if (autoCheckToggleLabel && autoCheckCheckbox) {
         autoCheckToggleLabel.textContent = autoCheckCheckbox.checked ? "Bật" : "Tắt";
     }
@@ -125,7 +130,21 @@ function updateSwitchToggleLabels() {
         autoReloginToggleLabel.textContent = autoReloginCheckbox.checked ? "Bật" : "Tắt";
     }
 }
+
+if (drawFavoritesOnlyCheckbox) {
+    drawFavoritesOnlyCheckbox.addEventListener("change", async () => {
+        updateSwitchToggleLabels();
+        try {
+            await chrome.storage.local.set({ drawFavoritesOnly: drawFavoritesOnlyCheckbox.checked });
+        } catch (error) {
+            drawFavoritesOnlyCheckbox.checked = !drawFavoritesOnlyCheckbox.checked;
+            updateSwitchToggleLabels();
+            setStatus(`Không thể lưu cài đặt: ${error.message}`);
+        }
+    });
+}
 const importConfigFile = document.getElementById("importConfigFile");
+const configPassphraseInput = document.getElementById("configPassphraseInput");
 const additionalSettingsDisclosure = document.getElementById("additionalSettingsDisclosure");
 const additionalSettingsHead = document.getElementById("additionalSettingsHead") || document.querySelector(".additional-settings-head");
 const additionalSettingsBody = document.getElementById("additionalSettingsBody");
@@ -145,51 +164,6 @@ function exportToCsv(filename, rows) {
 }
 
 const CONFIG_VERSION = 1;
-const CONFIG_SETTING_VALIDATORS = {
-    autoReloginEnabled: value => typeof value === "boolean",
-    autoCheckIntervalMinutes: value => Number.isSafeInteger(value) && value >= 1,
-    autoCheckEnabled: value => typeof value === "boolean",
-    autoCheckMode: value => typeof value === "string" && ["utcReset", "interval"].includes(value),
-    theme: value => typeof value === "string" && ["light", "dark", "system"].includes(value),
-    utcResetSyncEnabled: value => typeof value === "boolean",
-    utcResetDay: value => typeof value === "string" || Number.isInteger(value),
-    lastUtcResetDate: value => typeof value === "string",
-    webhookEnabled: value => typeof value === "boolean",
-    webhookUrl: value => typeof value === "string",
-    rewardTotals: value => value && typeof value === "object" && !Array.isArray(value),
-    storeAccounts: value => value && typeof value === "object" &&
-        !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
-            Array.isArray(value[mall]) &&
-            value[mall].every(account =>
-                account && typeof account.id === "string" &&
-                /^[A-Za-z0-9-]+$/.test(account.id) &&
-                typeof account.username === "string" && typeof account.password === "string"
-            ) &&
-            new Set(value[mall].map(account => account?.id)).size === value[mall].length
-        ),
-    favoriteRoleIds: value => value && typeof value === "object" &&
-        !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
-            value[mall] && typeof value[mall] === "object" &&
-            !Array.isArray(value[mall]) &&
-            Object.entries(value[mall]).every(([accountId, roleIds]) =>
-                (!accountId || /^[A-Za-z0-9-]+$/.test(accountId)) &&
-                Array.isArray(roleIds) && roleIds.every(roleId => typeof roleId === "string")
-            )
-        ),
-    tokens: value => value && typeof value === "object" &&
-        !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
-            value[mall] && typeof value[mall] === "object" &&
-            !Array.isArray(value[mall]) &&
-            Object.entries(value[mall]).every(([accountId, token]) =>
-                (!accountId || /^[A-Za-z0-9-]+$/.test(accountId)) &&
-                typeof token === "string"
-            )
-        ),
-    plutomallUsername: value => typeof value === "string",
-    plutomallPassword: value => typeof value === "string",
-    lilithstoreUsername: value => typeof value === "string",
-    lilithstorePassword: value => typeof value === "string",
-};
 const utcClockFormatter = new Intl.DateTimeFormat("en-GB", {
     timeZone: "UTC",
     hour: "2-digit",
@@ -743,7 +717,7 @@ function showHistory(character, history) {
       </button>
     </nav>
     <div class="content">
-      <div class="char-hero-card glass">
+      <div class="char-hero-card">
         <div class="char-hero-inner">
           <span class="hero-avatar-wrap"><img class="hero-avatar" alt=""></span>
           <div>
@@ -752,7 +726,7 @@ function showHistory(character, history) {
           </div>
         </div>
       </div>
-      <div class="history-card glass">
+      <div class="history-card">
         <div class="history-card-head">Phần thưởng đã nhận</div>
         <div class="history-list"></div>
       </div>
@@ -888,12 +862,12 @@ function showHistoryLoading(name) {
       <span class="detail-nav-title">Lịch sử quay</span>
     </nav>
     <div class="content">
-      <div class="char-hero-card glass">
+      <div class="char-hero-card">
         <div class="char-hero-inner">
           <div class="hero-name"></div>
         </div>
       </div>
-      <div class="history-card glass">
+      <div class="history-card">
         <div class="history-card-head">Phần thưởng đã nhận</div>
         <div class="history-list">
           <div class="history-empty history-loading">Đang tải…</div>
@@ -1608,6 +1582,27 @@ for (const checkbox of configSelectionCheckboxes) {
 }
 updateConfigSelectionButton();
 
+async function collectAccountScopedSetting(settingName) {
+    const keysByMall = {};
+    const allKeys = [];
+    for (const mall of ["plutomall", "lilithstore"]) {
+        const accountIds = ["", ...accountsByMall[mall].map(account => account.id)];
+        keysByMall[mall] = accountIds;
+        allKeys.push(...accountIds.map(accountId => accountStorageKey(mall, accountId, settingName)));
+    }
+    const stored = allKeys.length > 0 ? await chrome.storage.local.get(allKeys) : {};
+    const byAccount = { plutomall: {}, lilithstore: {} };
+    for (const mall of ["plutomall", "lilithstore"]) {
+        for (const accountId of keysByMall[mall]) {
+            const key = accountStorageKey(mall, accountId, settingName);
+            if (Object.prototype.hasOwnProperty.call(stored, key)) {
+                byAccount[mall][accountId] = stored[key];
+            }
+        }
+    }
+    return byAccount;
+}
+
 document.getElementById("exportConfigBtn").addEventListener("click", async () => {
     const selectedKeys = [...document.querySelectorAll(".config-options input:checked")]
         .map(input => input.value);
@@ -1617,6 +1612,7 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
     }
 
     try {
+        await persistLoginAccounts({ validate: false });
         const accountDataKeys = new Set(["favoriteRoleIds", "tokens"]);
         const storageKeys = selectedKeys.filter(key => !accountDataKeys.has(key));
         if (selectedKeys.includes("webhookEnabled") && !storageKeys.includes("webhookUrl")) {
@@ -1625,10 +1621,14 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
         if (selectedKeys.includes("autoCheckMode") && !storageKeys.includes("utcResetDay")) {
             storageKeys.push("utcResetDay");
         }
+        if (selectedKeys.includes("rewardTotals") && !storageKeys.includes("weeklyStats")) {
+            storageKeys.push("weeklyStats");
+        }
         const storedSettings = storageKeys.length > 0
             ? await chrome.storage.local.get(storageKeys)
             : {};
         const currentSettings = {
+            drawFavoritesOnly: Boolean(drawFavoritesOnlyCheckbox?.checked),
             autoReloginEnabled: autoReloginCheckbox.checked,
             autoCheckIntervalMinutes: Number(autoCheckIntervalInput.value),
             autoCheckEnabled: autoCheckCheckbox.checked,
@@ -1637,86 +1637,21 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
             utcResetDay: utcResetDaySelect?.value || "5",
             webhookEnabled: Boolean(document.getElementById("webhookEnabled")?.checked),
         };
-        const settings = {};
-        for (const key of selectedKeys) {
-            if (Object.prototype.hasOwnProperty.call(storedSettings, key)) {
-                settings[key] = storedSettings[key];
-            } else if (Object.prototype.hasOwnProperty.call(currentSettings, key)) {
-                settings[key] = currentSettings[key];
-            }
-        }
-        if (selectedKeys.includes("autoCheckMode") && (storedSettings.utcResetDay || utcResetDaySelect?.value)) {
-            settings.utcResetDay = storedSettings.utcResetDay || utcResetDaySelect?.value || "5";
-        }
-        if (selectedKeys.includes("webhookEnabled") && typeof storedSettings.webhookUrl === "string") {
-            settings.webhookUrl = storedSettings.webhookUrl;
-        }
+        const settings = buildExportSettings(selectedKeys, storedSettings, currentSettings);
         if (settings.storeAccounts && typeof settings.storeAccounts === "object") {
-            const stripped = {};
-            for (const [mall, accounts] of Object.entries(settings.storeAccounts)) {
-                stripped[mall] = Array.isArray(accounts)
-                    ? accounts.map(acc => ({ id: acc.id, username: acc.username, password: "" }))
-                    : [];
+            const passphrase = configPassphraseInput?.value || "";
+            if (passphrase.length > 0) {
+                settings.encryptedStoreAccounts = await encryptJsonWithPassphrase(settings.storeAccounts, passphrase);
+                delete settings.storeAccounts;
+            } else {
+                settings.storeAccounts = stripStoreAccountsPasswords(settings.storeAccounts);
             }
-            settings.storeAccounts = stripped;
         }
         if (selectedKeys.includes("favoriteRoleIds")) {
-            const favoriteKeysByMall = {};
-            const favoriteKeys = [];
-            for (const mall of ["plutomall", "lilithstore"]) {
-                const accountIds = [
-                    "",
-                    ...accountsByMall[mall].map(account => account.id),
-                ];
-                favoriteKeysByMall[mall] = accountIds;
-                favoriteKeys.push(
-                    ...accountIds.map(accountId =>
-                        accountStorageKey(mall, accountId, "favoriteRoleIds")
-                    )
-                );
-            }
-            const storedFavorites = favoriteKeys.length > 0
-                ? await chrome.storage.local.get(favoriteKeys)
-                : {};
-            const favoritesByAccount = { plutomall: {}, lilithstore: {} };
-            for (const mall of ["plutomall", "lilithstore"]) {
-                for (const accountId of favoriteKeysByMall[mall]) {
-                    const key = accountStorageKey(mall, accountId, "favoriteRoleIds");
-                    if (Object.prototype.hasOwnProperty.call(storedFavorites, key)) {
-                        favoritesByAccount[mall][accountId] = storedFavorites[key];
-                    }
-                }
-            }
-            settings.favoriteRoleIds = favoritesByAccount;
+            settings.favoriteRoleIds = await collectAccountScopedSetting("favoriteRoleIds");
         }
         if (selectedKeys.includes("tokens")) {
-            const tokenKeysByMall = {};
-            const tokenKeys = [];
-            for (const mall of ["plutomall", "lilithstore"]) {
-                const accountIds = [
-                    "",
-                    ...accountsByMall[mall].map(account => account.id),
-                ];
-                tokenKeysByMall[mall] = accountIds;
-                tokenKeys.push(
-                    ...accountIds.map(accountId =>
-                        accountStorageKey(mall, accountId, "token")
-                    )
-                );
-            }
-            const storedTokens = tokenKeys.length > 0
-                ? await chrome.storage.local.get(tokenKeys)
-                : {};
-            const tokensByAccount = { plutomall: {}, lilithstore: {} };
-            for (const mall of ["plutomall", "lilithstore"]) {
-                for (const accountId of tokenKeysByMall[mall]) {
-                    const key = accountStorageKey(mall, accountId, "token");
-                    if (Object.prototype.hasOwnProperty.call(storedTokens, key)) {
-                        tokensByAccount[mall][accountId] = storedTokens[key];
-                    }
-                }
-            }
-            settings.tokens = tokensByAccount;
+            settings.tokens = await collectAccountScopedSetting("tokens");
         }
         if (Object.keys(settings).length === 0) {
             configSettingsStatus.textContent = "Không có cài đặt đã lưu nào trong các mục được chọn.";
@@ -1787,6 +1722,19 @@ importConfigFile.addEventListener("change", async () => {
 
         const importedSettings = Object.fromEntries(entries);
         const importedSettingCount = entries.length;
+        if (importedSettings.encryptedStoreAccounts) {
+            const passphrase = configPassphraseInput?.value ||
+                window.prompt("File cấu hình này có tài khoản được mã hóa. Nhập mật khẩu giải mã:") || "";
+            if (!passphrase) {
+                throw new Error("Cần nhập mật khẩu bảo vệ để giải mã tài khoản.");
+            }
+            const decryptedAccounts = await decryptJsonWithPassphrase(importedSettings.encryptedStoreAccounts, passphrase);
+            if (!CONFIG_SETTING_VALIDATORS.storeAccounts(decryptedAccounts)) {
+                throw new Error("Dữ liệu tài khoản sau khi giải mã không hợp lệ.");
+            }
+            importedSettings.storeAccounts = decryptedAccounts;
+            delete importedSettings.encryptedStoreAccounts;
+        }
         const importedFavorites = importedSettings.favoriteRoleIds;
         delete importedSettings.favoriteRoleIds;
         const importedTokens = importedSettings.tokens;
@@ -1835,6 +1783,9 @@ importConfigFile.addEventListener("change", async () => {
             }
         }
         await chrome.storage.local.set({ ...importedSettings, ...accountDataToStore });
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "drawFavoritesOnly") && drawFavoritesOnlyCheckbox) {
+            drawFavoritesOnlyCheckbox.checked = importedSettings.drawFavoritesOnly;
+        }
         if (Object.prototype.hasOwnProperty.call(importedSettings, "autoCheckEnabled")) {
             autoCheckCheckbox.checked = importedSettings.autoCheckEnabled;
         }
@@ -1853,6 +1804,21 @@ importConfigFile.addEventListener("change", async () => {
         }
         if (Object.prototype.hasOwnProperty.call(importedSettings, "theme")) {
             applyTheme(importedSettings.theme);
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "webhookEnabled") && webhookEnabledCheckbox) {
+            webhookEnabledCheckbox.checked = importedSettings.webhookEnabled;
+            if (webhookToggleLabel) {
+                webhookToggleLabel.textContent = importedSettings.webhookEnabled ? "Bật" : "Tắt";
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(importedSettings, "webhookUrl") && webhookUrlInput) {
+            webhookUrlInput.value = importedSettings.webhookUrl;
+        }
+        if (
+            Object.prototype.hasOwnProperty.call(importedSettings, "rewardTotals") ||
+            Object.prototype.hasOwnProperty.call(importedSettings, "weeklyStats")
+        ) {
+            await renderRewardTotals();
         }
         updateSwitchToggleLabels();
         if (Object.prototype.hasOwnProperty.call(importedSettings, "storeAccounts")) {
@@ -1969,50 +1935,143 @@ if (webhookEnabledCheckbox && webhookUrlInput) {
     }
 }
 
-// --- Reward Totals Summary ---
+// --- Reward Totals Summary & Weekly Leaderboard ---
+const rewardStatsModeRadios = [...document.querySelectorAll('input[name="rewardStatsMode"]')];
+
+function getRewardStatsMode() {
+    return document.querySelector('input[name="rewardStatsMode"]:checked')?.value || "weekly";
+}
+
+for (const radio of rewardStatsModeRadios) {
+    radio.addEventListener("change", () => {
+        if (radio.checked) void renderRewardTotals();
+    });
+}
+
 async function renderRewardTotals() {
     const container = document.getElementById("rewardTotalsList");
     if (!container) return;
-    const data = await chrome.storage.local.get("rewardTotals");
-    const rewardTotals = data.rewardTotals || {};
-    const entries = Object.entries(rewardTotals).sort((a, b) => b[1] - a[1]);
-    container.innerHTML = "";
+    const leaderboardWrap = document.getElementById("weeklyLeaderboardWrap");
+    const leaderboardList = document.getElementById("weeklyLeaderboardList");
+    const mode = getRewardStatsMode();
+    const data = await chrome.storage.local.get(["rewardTotals", "weeklyStats"]);
+    const currentWeek = getCurrentWeekKey();
+    const isCurrentWeekStats = data.weeklyStats?.weekKey === currentWeek;
+
+    const activeTotals = mode === "weekly"
+        ? (isCurrentWeekStats ? (data.weeklyStats?.rewardTotals || {}) : {})
+        : (data.rewardTotals || {});
+
+    if (leaderboardWrap) {
+        leaderboardWrap.hidden = mode !== "weekly";
+    }
+
+    const entries = Object.entries(activeTotals).sort((a, b) => b[1] - a[1]);
+    container.replaceChildren();
     if (entries.length === 0) {
         const empty = document.createElement("div");
         empty.className = "login-note";
-        empty.textContent = "Chưa có thống kê phần thưởng nào.";
+        empty.textContent = mode === "weekly"
+            ? "Chưa có phần thưởng nào trong tuần này."
+            : "Chưa có thống kê phần thưởng nào.";
         container.appendChild(empty);
-        return;
+    } else {
+        for (const [name, count] of entries) {
+            const row = document.createElement("div");
+            row.className = "reward-total-item";
+            const nameEl = document.createElement("span");
+            nameEl.className = "reward-total-name";
+            nameEl.textContent = name;
+            const countEl = document.createElement("span");
+            countEl.className = "reward-total-count";
+            countEl.textContent = `x${count}`;
+            row.append(nameEl, countEl);
+            container.appendChild(row);
+        }
     }
-    for (const [name, count] of entries) {
-        const row = document.createElement("div");
-        row.className = "reward-total-item";
-        const nameEl = document.createElement("span");
-        nameEl.className = "reward-total-name";
-        nameEl.textContent = name;
-        const countEl = document.createElement("span");
-        countEl.className = "reward-total-count";
-        countEl.textContent = `x${count}`;
-        row.append(nameEl, countEl);
-        container.appendChild(row);
+
+    if (mode === "weekly" && leaderboardList) {
+        leaderboardList.replaceChildren();
+        const scoresObj = isCurrentWeekStats ? (data.weeklyStats?.characterScores || {}) : {};
+        const ranked = Object.values(scoresObj)
+            .filter(item => item && item.score > 0)
+            .sort((a, b) => (b.score - a.score) || ((b.draws || 0) - (a.draws || 0)));
+
+        if (ranked.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "login-note";
+            empty.textContent = "Chưa có dữ liệu nhân phẩm tuần này.";
+            leaderboardList.appendChild(empty);
+        } else {
+            ranked.forEach((charEntry, index) => {
+                const row = document.createElement("div");
+                row.className = "leaderboard-item";
+
+                const rankEl = document.createElement("span");
+                rankEl.className = "leaderboard-rank";
+                rankEl.textContent = `#${index + 1}`;
+
+                const infoEl = document.createElement("div");
+                infoEl.className = "leaderboard-info";
+
+                const nameEl = document.createElement("div");
+                nameEl.className = "leaderboard-name";
+                const svrLabel = charEntry.svrId ? ` (#${charEntry.svrId})` : "";
+                nameEl.textContent = `${charEntry.name || charEntry.roleId}${svrLabel}`;
+
+                const subEl = document.createElement("div");
+                subEl.className = "leaderboard-sub";
+                const rewardSummary = Object.entries(charEntry.rewards || {})
+                    .map(([rName, rCount]) => `x${rCount} ${rName}`)
+                    .join(", ");
+                subEl.textContent = rewardSummary;
+                subEl.title = rewardSummary;
+
+                infoEl.append(nameEl, subEl);
+
+                const scoreEl = document.createElement("span");
+                scoreEl.className = "leaderboard-score";
+                scoreEl.textContent = `${Number(charEntry.score).toLocaleString("vi-VN")} đ`;
+
+                row.append(rankEl, infoEl, scoreEl);
+                leaderboardList.appendChild(row);
+            });
+        }
     }
 }
 
 const exportRewardsCsvBtn = document.getElementById("exportRewardsCsvBtn");
 if (exportRewardsCsvBtn) {
     exportRewardsCsvBtn.addEventListener("click", async () => {
-        const data = await chrome.storage.local.get("rewardTotals");
-        const rewardTotals = data.rewardTotals || {};
-        const entries = Object.entries(rewardTotals).sort((a, b) => b[1] - a[1]);
+        const mode = getRewardStatsMode();
+        const data = await chrome.storage.local.get(["rewardTotals", "weeklyStats"]);
+        const currentWeek = getCurrentWeekKey();
+        const isCurrentWeekStats = data.weeklyStats?.weekKey === currentWeek;
+        const activeTotals = mode === "weekly"
+            ? (isCurrentWeekStats ? (data.weeklyStats?.rewardTotals || {}) : {})
+            : (data.rewardTotals || {});
+        const entries = Object.entries(activeTotals).sort((a, b) => b[1] - a[1]);
         if (entries.length === 0) {
             alert("Chưa có phần thưởng nào để xuất.");
             return;
         }
         const rows = [
-            ["Phần thưởng", "Số lượng"],
-            ...entries.map(([name, count]) => [name, count]),
+            ["Phạm vi", "Phần thưởng", "Số lượng"],
+            ...entries.map(([name, count]) => [mode === "weekly" ? `Tuần ${currentWeek}` : "Tất cả", name, count]),
         ];
-        exportToCsv(`rok-reward-summary-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+        if (mode === "weekly" && isCurrentWeekStats && data.weeklyStats?.characterScores) {
+            const ranked = Object.values(data.weeklyStats.characterScores)
+                .filter(item => item && item.score > 0)
+                .sort((a, b) => (b.score - a.score) || ((b.draws || 0) - (a.draws || 0)));
+            if (ranked.length > 0) {
+                rows.push([], ["Hạng", "Nhân vật", "Server", "Điểm nhân phẩm", "Chi tiết phần thưởng"]);
+                ranked.forEach((c, idx) => {
+                    const detail = Object.entries(c.rewards || {}).map(([n, cnt]) => `x${cnt} ${n}`).join("; ");
+                    rows.push([idx + 1, c.name || c.roleId, c.svrId || "", c.score, detail]);
+                });
+            }
+        }
+        exportToCsv(`rok-reward-summary-${mode}-${new Date().toISOString().slice(0, 10)}.csv`, rows);
     });
 }
 
@@ -2020,7 +2079,7 @@ const clearRewardsBtn = document.getElementById("clearRewardsBtn");
 if (clearRewardsBtn) {
     clearRewardsBtn.addEventListener("click", async () => {
         if (!confirm("Bạn có chắc muốn xóa toàn bộ thống kê phần thưởng?")) return;
-        await chrome.storage.local.remove("rewardTotals");
+        await chrome.storage.local.remove(["rewardTotals", "weeklyStats"]);
         await renderRewardTotals();
     });
 }
@@ -2028,6 +2087,10 @@ renderRewardTotals();
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
+    if (changes.drawFavoritesOnly && drawFavoritesOnlyCheckbox) {
+        drawFavoritesOnlyCheckbox.checked = changes.drawFavoritesOnly.newValue === true;
+        updateSwitchToggleLabels();
+    }
     if (changes.autoCheckEnabled) {
         autoCheckCheckbox.checked = changes.autoCheckEnabled.newValue !== false;
         updateSwitchToggleLabels();
@@ -2079,7 +2142,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         }
     }
     const drawsLeftKey = accountStorageKey(mall, accountId, "drawsLeft");
-    if (changes.rewardTotals) {
+    if (changes.rewardTotals || changes.weeklyStats) {
         renderRewardTotals();
     }
     if (changes[drawsLeftKey]) {
@@ -2167,6 +2230,7 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
 (async () => {
     try {
         const settings = await chrome.storage.local.get([
+            "drawFavoritesOnly",
             "autoCheckEnabled",
             "autoCheckMode",
             "autoCheckIntervalMinutes",
@@ -2180,6 +2244,9 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
             "theme",
         ]);
         applyTheme(settings.theme || "system");
+        if (drawFavoritesOnlyCheckbox) {
+            drawFavoritesOnlyCheckbox.checked = settings.drawFavoritesOnly === true;
+        }
         autoCheckCheckbox.checked = settings.autoCheckEnabled !== false;
         applyAutoCheckMode(settings.autoCheckMode || "utcReset");
         if (utcResetDaySelect && settings.utcResetDay !== undefined) {

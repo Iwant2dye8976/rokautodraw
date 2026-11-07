@@ -187,72 +187,6 @@
   --shadow-elevated: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --primary: #cc785c;
-    --primary-hover: #d9886c;
-    --primary-active: #a9583e;
-    --primary-disabled: #2e2c28;
-    --on-primary: #ffffff;
-
-    --accent-teal: #5db8a6;
-    --accent-amber: #e8a55a;
-
-    --canvas: #181715;
-    --bg: #181715;
-    --surface-soft: #252320;
-    --surface-card: #1f1e1b;
-    --surface-cream-strong: #2c2925;
-    --surface-hover: #292723;
-    --surface-active: #33302b;
-
-    --surface-dark: #121110;
-    --surface-dark-elevated: #1f1e1b;
-    --surface-dark-soft: #181715;
-    --on-dark: #faf9f5;
-    --on-dark-soft: #a09d96;
-
-    --hairline: #2e2c28;
-    --hairline-soft: #252320;
-    --border: #2e2c28;
-    --border-subtle: #24221f;
-    --border-strong: #423f39;
-
-    --ink: #faf9f5;
-    --body: #dedcd5;
-    --body-strong: #faf9f5;
-    --muted: #a09d96;
-    --muted-soft: #78756e;
-
-    --success: #5db872;
-    --success-bg: #122417;
-    --success-border: #1e4528;
-
-    --warning: #d4a017;
-    --warning-bg: #29210c;
-    --warning-border: #4a3b14;
-
-    --error: #d9534f;
-    --error-bg: #2b1313;
-    --error-border: #522020;
-
-    --gold: #e8a55a;
-    --gold-hover: #f3b977;
-
-    --log-bg: #121110;
-    --log-inner: #181715;
-    --log-ink: #faf9f5;
-    --log-border: #2e2c28;
-
-    --switch-thumb: #faf9f5;
-    --switch-thumb-checked: #ffffff;
-
-    --focus-ring: 0 0 0 3px rgba(204, 120, 92, 0.25);
-    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-elevated: 0 2px 6px rgba(0, 0, 0, 0.4);
-  }
-}
-
 /* --------------------------------------------------------------------------
    Global Reset & Base Atmosphere
    -------------------------------------------------------------------------- */
@@ -350,14 +284,6 @@ textarea:focus-visible {
   flex-shrink: 0;
 }
 
-/* Anthropic Radial-Spike Mark (4-spoke radial glyph) */
-.brand-mark {
-  display: block;
-  flex-shrink: 0;
-  color: var(--ink);
-  transition: color var(--duration-base) var(--ease-out);
-}
-
 .g-nav-brand {
   font-family: var(--font-display);
   font-size: 16px;
@@ -417,16 +343,6 @@ textarea:focus-visible {
 
 [data-theme="dark"] .theme-icon-moon {
   display: none !important;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .theme-icon-sun {
-    display: block !important;
-  }
-
-  :root:not([data-theme="light"]) .theme-icon-moon {
-    display: none !important;
-  }
 }
 
 /* --------------------------------------------------------------------------
@@ -681,11 +597,6 @@ textarea:focus-visible {
   background-color: var(--surface-card);
 }
 
-.btn-icon {
-  font-size: 12px;
-  line-height: 1;
-}
-
 /* Primary Coral CTA Button (button-primary per DESIGN-claude.md) */
 .btn-pill {
   display: inline-flex;
@@ -817,6 +728,14 @@ textarea:focus-visible {
   padding: 3px 9px;
   border-radius: var(--r-pill);
   border: 1px solid var(--hairline);
+}
+
+.char-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 /* Character Search Bar */
@@ -1323,28 +1242,6 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
-/* Form Inputs inside Settings */
-
-.settings-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  font-size: 11.5px;
-  font-family: var(--font-sans);
-  color: var(--body);
-  cursor: pointer;
-  user-select: none;
-}
-
-.settings-checkbox-row input[type="checkbox"] {
-  accent-color: var(--primary);
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-}
-
-
 /* --------------------------------------------------------------------------
    Webhook Format Guide (DESIGN-claude.md)
    -------------------------------------------------------------------------- */
@@ -1437,8 +1334,6 @@ textarea:focus-visible {
   border-color: var(--border-strong);
 }
 
-.login-field input:focus,
-
 .login-field textarea {
   width: 100%;
   min-width: 0;
@@ -1466,12 +1361,8 @@ textarea:focus-visible {
 }
 
 .login-field textarea:focus,
-.login-field textarea:focus-visible {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: var(--focus-ring);
-}
-
+.login-field textarea:focus-visible,
+.login-field input:focus,
 .login-field input:focus-visible {
   outline: none;
   border-color: var(--primary);
@@ -1484,14 +1375,6 @@ textarea:focus-visible {
 
 .interval-presets {
   margin-top: 8px;
-}
-
-.interval-presets-label {
-  display: block;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--muted);
-  margin-bottom: 6px;
 }
 
 .interval-preset-chips {
@@ -2300,6 +2183,87 @@ textarea:focus-visible {
   font-size: 11px;
   font-weight: 600;
   color: var(--primary);
+}
+
+.leaderboard-wrap {
+  margin-bottom: 12px;
+}
+
+.leaderboard-title {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background-color: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  font-size: 12px;
+}
+
+.leaderboard-rank {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  min-width: 24px;
+}
+
+.leaderboard-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.leaderboard-name {
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaderboard-sub {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaderboard-score {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  background-color: var(--surface-card);
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+.config-passphrase-field {
+  margin-top: 10px;
 }
 
 /* --------------------------------------------------------------------------

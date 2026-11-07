@@ -35,22 +35,33 @@ function accountStorageKey(mall, accountId, name) {
     return accountId ? `${mall}_account_${accountId}_${name}` : `${mall}_${name}`;
 }
 
-function getJwtExp(token) {
+function parseJwtPayload(token) {
     if (!token || typeof token !== "string") return null;
     try {
         const parts = token.replace(/^Bearer\s+/i, "").trim().split(".");
         if (parts.length < 2) return null;
         const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
         const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
-        return typeof payload?.exp === "number" ? payload.exp : null;
+        return payload && typeof payload === "object" ? payload : null;
     } catch {
         return null; // not a standard JWT
     }
 }
 
+function getJwtExp(token) {
+    const payload = parseJwtPayload(token);
+    return typeof payload?.exp === "number" ? payload.exp : null;
+}
+
 function isJwtExpired(token) {
     const exp = getJwtExp(token);
     return exp !== null && Math.floor(Date.now() / 1000) >= exp;
+}
+
+function isJwtExpiringSoon(token, withinMs = 30 * 60 * 1000, nowMs = Date.now()) {
+    if (!token) return true;
+    const exp = getJwtExp(token);
+    return exp !== null && exp * 1000 <= nowMs + withinMs;
 }
 
 function isExpiredTokenResponse(json) {
@@ -225,6 +236,28 @@ function getNextUtcResetTime(targetDay = "5", referenceTime = Date.now()) {
     return target.getTime();
 }
 
+function getPreResetReloginTime(targetDay = "5", referenceTime = Date.now()) {
+    const nextReset = getNextUtcResetTime(targetDay, referenceTime);
+    const preReset = nextReset - 15 * 60 * 1000;
+    if (preReset > referenceTime) return preReset;
+    const periodMs = (targetDay === "everyday" || targetDay === "daily")
+        ? 24 * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+    return preReset + periodMs;
+}
+
+function getCurrentWeekKey(now = new Date()) {
+    const d = now instanceof Date ? now : new Date(now);
+    const candidate = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    let daysSinceFriday = (d.getUTCDay() - 5 + 7) % 7;
+    if (daysSinceFriday === 0) {
+        const friResetToday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 5, 0, 0);
+        if (d.getTime() < friResetToday) daysSinceFriday = 7;
+    }
+    candidate.setUTCDate(candidate.getUTCDate() - daysSinceFriday);
+    return candidate.toISOString().slice(0, 10);
+}
+
 function getTodayUtcDateString(d = new Date()) {
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
 }
@@ -267,12 +300,251 @@ function toCsv(rows) {
         .join("\r\n");
 }
 
+function stripStoreAccountsPasswords(storeAccounts) {
+    if (!storeAccounts || typeof storeAccounts !== "object") return storeAccounts;
+    const stripped = {};
+    for (const [mall, accounts] of Object.entries(storeAccounts)) {
+        stripped[mall] = Array.isArray(accounts)
+            ? accounts.map(acc => ({ id: acc.id, username: acc.username, password: "" }))
+            : [];
+    }
+    return stripped;
+}
+
+function mergeRewardTotals(existing, sessionRewards) {
+    const totals = { ...(existing || {}) };
+    for (const [name, count] of Object.entries(sessionRewards || {})) {
+        totals[name] = (totals[name] || 0) + count;
+    }
+    return totals;
+}
+
+const REWARD_POINTS = {
+    "2.000 Đá Quý": 2000,
+    "Tăng tốc 24 giờ": 1500,
+    "Rương Tự Chọn Vật Liệu Trang Bị": 1400,
+    "Tăng tốc 8 giờ": 600,
+    "500 Đá Quý": 500,
+    "Tăng tốc 3 giờ": 300,
+    "200 Đá Quý": 200,
+};
+
+function getRewardPoints(rewardName) {
+    return Object.prototype.hasOwnProperty.call(REWARD_POINTS, rewardName)
+        ? REWARD_POINTS[rewardName]
+        : 100;
+}
+
+function filterRolesForDraw(roles, favIds, drawFavoritesOnly) {
+    const favSet = new Set(Array.isArray(favIds) ? favIds : []);
+    const sorted = [...(roles || [])].sort((a, b) => (favSet.has(b.roleId) ? 1 : 0) - (favSet.has(a.roleId) ? 1 : 0));
+    if (drawFavoritesOnly) {
+        const favRoles = sorted.filter(r => favSet.has(r.roleId));
+        if (favRoles.length > 0) {
+            return { rolesToDraw: favRoles, filteredByFavorites: true };
+        }
+    }
+    return { rolesToDraw: sorted, filteredByFavorites: false };
+}
+
+function mergeWeeklyStats(existingWeeklyStats, weekKey, mall, roleRewardsEntries) {
+    const isSameWeek = existingWeeklyStats && existingWeeklyStats.weekKey === weekKey;
+    const rewardTotals = isSameWeek && existingWeeklyStats.rewardTotals
+        ? { ...existingWeeklyStats.rewardTotals }
+        : {};
+    const characterScores = isSameWeek && existingWeeklyStats.characterScores
+        ? { ...existingWeeklyStats.characterScores }
+        : {};
+
+    for (const entry of roleRewardsEntries || []) {
+        const role = entry?.role;
+        const rewards = entry?.rewards || {};
+        if (!role?.roleId) continue;
+
+        const charKey = `${mall}:${role.roleId}`;
+        const prev = characterScores[charKey] || {
+            name: role.name || String(role.roleId),
+            roleId: String(role.roleId),
+            svrId: String(role.svrId || ""),
+            mall,
+            score: 0,
+            draws: 0,
+            rewards: {},
+        };
+        const mergedCharRewards = { ...(prev.rewards || {}) };
+        let addedScore = 0;
+        let addedDraws = 0;
+
+        for (const [rewardName, count] of Object.entries(rewards)) {
+            const num = Number(count) || 0;
+            if (num <= 0) continue;
+            rewardTotals[rewardName] = (rewardTotals[rewardName] || 0) + num;
+            mergedCharRewards[rewardName] = (mergedCharRewards[rewardName] || 0) + num;
+            addedScore += getRewardPoints(rewardName) * num;
+            addedDraws += num;
+        }
+
+        characterScores[charKey] = {
+            ...prev,
+            name: role.name || prev.name,
+            svrId: String(role.svrId || prev.svrId || ""),
+            score: (prev.score || 0) + addedScore,
+            draws: (prev.draws || 0) + addedDraws,
+            rewards: mergedCharRewards,
+        };
+    }
+
+    return { weekKey, rewardTotals, characterScores };
+}
+
+function bytesToBase64(bytes) {
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+async function deriveAesGcmKey(passphrase, saltBytes, iterations = 100000) {
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(passphrase),
+        "PBKDF2",
+        false,
+        ["deriveKey"]
+    );
+    return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt: saltBytes, iterations, hash: "SHA-256" },
+        baseKey,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+    );
+}
+
+async function encryptJsonWithPassphrase(data, passphrase) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const iterations = 100000;
+    const key = await deriveAesGcmKey(passphrase, salt, iterations);
+    const encoded = new TextEncoder().encode(JSON.stringify(data));
+    const cipherBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
+    return {
+        kdf: "PBKDF2-SHA256",
+        iterations,
+        cipher: "AES-GCM",
+        salt: bytesToBase64(salt),
+        iv: bytesToBase64(iv),
+        data: bytesToBase64(new Uint8Array(cipherBuf)),
+    };
+}
+
+async function decryptJsonWithPassphrase(envelope, passphrase) {
+    try {
+        const salt = base64ToBytes(envelope.salt);
+        const iv = base64ToBytes(envelope.iv);
+        const cipherBytes = base64ToBytes(envelope.data);
+        const iterations = Number(envelope.iterations) || 100000;
+        const key = await deriveAesGcmKey(passphrase, salt, iterations);
+        const plainBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipherBytes);
+        return JSON.parse(new TextDecoder().decode(plainBuf));
+    } catch {
+        throw new Error("Mật khẩu giải mã không đúng hoặc dữ liệu bị hỏng.");
+    }
+}
+
+function buildExportSettings(selectedKeys, storedSettings, currentSettings) {
+    const settings = {};
+    for (const key of selectedKeys) {
+        if (Object.prototype.hasOwnProperty.call(storedSettings, key)) {
+            settings[key] = storedSettings[key];
+        } else if (Object.prototype.hasOwnProperty.call(currentSettings, key)) {
+            settings[key] = currentSettings[key];
+        }
+    }
+    if (selectedKeys.includes("webhookEnabled") && typeof storedSettings.webhookUrl === "string") {
+        settings.webhookUrl = storedSettings.webhookUrl;
+    }
+    if (selectedKeys.includes("autoCheckMode") && (storedSettings.utcResetDay || currentSettings.utcResetDay)) {
+        settings.utcResetDay = storedSettings.utcResetDay || currentSettings.utcResetDay || "5";
+    }
+    if (selectedKeys.includes("rewardTotals") && storedSettings.weeklyStats && typeof storedSettings.weeklyStats === "object") {
+        settings.weeklyStats = storedSettings.weeklyStats;
+    }
+    return settings;
+}
+
+const CONFIG_SETTING_VALIDATORS = {
+    drawFavoritesOnly: value => typeof value === "boolean",
+    autoReloginEnabled: value => typeof value === "boolean",
+    autoCheckIntervalMinutes: value => Number.isSafeInteger(value) && value >= 1,
+    autoCheckEnabled: value => typeof value === "boolean",
+    autoCheckMode: value => typeof value === "string" && ["utcReset", "interval"].includes(value),
+    theme: value => typeof value === "string" && ["light", "dark", "system"].includes(value),
+    utcResetDay: value => typeof value === "string" || Number.isInteger(value),
+    lastUtcResetDate: value => typeof value === "string",
+    webhookEnabled: value => typeof value === "boolean",
+    webhookUrl: value => typeof value === "string",
+    rewardTotals: value => Boolean(value && typeof value === "object" && !Array.isArray(value)),
+    weeklyStats: value => Boolean(
+        value && typeof value === "object" && !Array.isArray(value) &&
+        typeof value.weekKey === "string" &&
+        value.rewardTotals && typeof value.rewardTotals === "object" && !Array.isArray(value.rewardTotals) &&
+        value.characterScores && typeof value.characterScores === "object" && !Array.isArray(value.characterScores)
+    ),
+    encryptedStoreAccounts: value => Boolean(
+        value && typeof value === "object" && !Array.isArray(value) &&
+        typeof value.salt === "string" && typeof value.iv === "string" && typeof value.data === "string"
+    ),
+    storeAccounts: value => Boolean(value && typeof value === "object" &&
+        !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
+            Array.isArray(value[mall]) &&
+            value[mall].every(account =>
+                account && typeof account.id === "string" &&
+                /^[A-Za-z0-9-]+$/.test(account.id) &&
+                typeof account.username === "string" && typeof account.password === "string"
+            ) &&
+            new Set(value[mall].map(account => account?.id)).size === value[mall].length
+        )),
+    favoriteRoleIds: value => Boolean(value && typeof value === "object" &&
+        !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
+            value[mall] && typeof value[mall] === "object" &&
+            !Array.isArray(value[mall]) &&
+            Object.entries(value[mall]).every(([accountId, roleIds]) =>
+                (!accountId || /^[A-Za-z0-9-]+$/.test(accountId)) &&
+                Array.isArray(roleIds) && roleIds.every(roleId => typeof roleId === "string")
+            )
+        )),
+    tokens: value => Boolean(value && typeof value === "object" &&
+        !Array.isArray(value) && ["plutomall", "lilithstore"].every(mall =>
+            value[mall] && typeof value[mall] === "object" &&
+            !Array.isArray(value[mall]) &&
+            Object.entries(value[mall]).every(([accountId, token]) =>
+                (!accountId || /^[A-Za-z0-9-]+$/.test(accountId)) &&
+                typeof token === "string"
+            )
+        )),
+    plutomallUsername: value => typeof value === "string",
+    plutomallPassword: value => typeof value === "string",
+    lilithstoreUsername: value => typeof value === "string",
+    lilithstorePassword: value => typeof value === "string",
+};
+
 if (typeof module !== "undefined") {
     module.exports = {
         STORE_CONFIG, STORE_NAMES, isReloginStoreUrl, accountStorageKey,
-        getJwtExp, isJwtExpired, isExpiredTokenResponse, parseWebhookUrls, buildWebhookBody,
+        parseJwtPayload, getJwtExp, isJwtExpired, isJwtExpiringSoon, isExpiredTokenResponse, parseWebhookUrls, buildWebhookBody,
         getRewardIcons, buildSingleDiscordRewardEmbed, getRoleDrawCount,
-        getNextUtcResetTime, getTodayUtcDateString, isUtcResetMissed,
+        getNextUtcResetTime, getPreResetReloginTime, getCurrentWeekKey, getTodayUtcDateString, isUtcResetMissed,
         normalizeSearchText, matchesSearch, toCsv,
+        stripStoreAccountsPasswords, mergeRewardTotals, REWARD_POINTS, getRewardPoints,
+        filterRolesForDraw, mergeWeeklyStats, encryptJsonWithPassphrase, decryptJsonWithPassphrase,
+        buildExportSettings, CONFIG_SETTING_VALIDATORS,
     };
 }
