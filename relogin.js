@@ -94,29 +94,44 @@ function setInputValue(input, value) {
     input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-async function waitForStoreRedirectOrError(mall, passwordPanel, timeoutMs = 20000) {
-    const config = STORE_CONFIG[mall];
+let latestApiResponse = null;
+window.addEventListener("message", event => {
+    if (event.source !== window) return;
+    if (event.data?.type === "ROK_PASSPORT_API_RESPONSE") {
+        latestApiResponse = event.data;
+    }
+});
+
+function getInPageLoginError(passwordPanel) {
+    const errorEl = passwordPanel?.querySelector(
+        '[role="alert"], [aria-live="assertive"], .ant-form-item-explain-error, .ant-message-error, [class*="error" i]'
+    ) || document.querySelector('.ant-message-error, [role="alert"]');
+    const text = errorEl?.textContent?.trim();
+    return text || null;
+}
+
+async function waitForLoginResult(passwordPanel, timeoutMs = 6000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        if (
-            location.origin === config.storeOrigin &&
-            location.pathname.startsWith(config.storePath)
-        ) return { redirected: true };
-
-        const errorEl = passwordPanel?.querySelector(
-            '[role="alert"], .ant-form-item-explain-error, .ant-message-error'
-        );
-        const errorText = errorEl?.textContent?.trim();
-        if (errorText) {
-            return { redirected: false, error: errorText };
+        if (latestApiResponse) {
+            const { data } = latestApiResponse;
+            if (data?.code === 200 || data?.code === 0) {
+                return { success: true };
+            }
+            const errorMsg = data?.msg || data?.message || (data?.code ? `Login error (code ${data.code})` : null);
+            if (errorMsg) {
+                return { success: false, error: errorMsg };
+            }
         }
 
-        await delay(300);
+        const domError = getInPageLoginError(passwordPanel);
+        if (domError) {
+            return { success: false, error: domError };
+        }
+
+        await delay(200);
     }
-    return {
-        redirected: false,
-        error: `Passport did not redirect to ${mall === "lilithstore" ? "Lilith Store" : "Plutomall"} after submitting login.`
-    };
+    return { success: true };
 }
 
 function reportFinished(success, error) {
@@ -201,8 +216,8 @@ function reportFinished(success, error) {
         if (!submit) throw new Error("Could not find submit button in password tab.");
         await delay(600);
         submit.click();
-        const outcome = await waitForStoreRedirectOrError(mall, passwordPanel);
-        if (!outcome.redirected) {
+        const outcome = await waitForLoginResult(passwordPanel, 6000);
+        if (!outcome.success) {
             reportFinished(false, outcome.error);
         }
     } catch (error) {

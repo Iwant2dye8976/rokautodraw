@@ -67,12 +67,23 @@ const RELOGIN_ORIGINS = {
     plutomall: "https://passport.pup.vn",
 };
 async function postSingleWebhook(webhookUrl, text, discordPayload = null) {
-    const resp = await fetch(webhookUrl, {
+    const bodyStr = JSON.stringify(buildWebhookBody(webhookUrl, text, discordPayload));
+    let resp = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildWebhookBody(webhookUrl, text, discordPayload)),
+        body: bodyStr,
     });
     if (!resp.ok) {
+        if (resp.status === 429) {
+            const retryAfterSec = Number(resp.headers?.get("Retry-After")) || 2;
+            await new Promise(r => setTimeout(r, Math.min(Math.max(retryAfterSec, 1) * 1000, 5000)));
+            resp = await fetch(webhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: bodyStr,
+            });
+            if (resp.ok) return true;
+        }
         let detail = "";
         try {
             const errData = await resp.json();
@@ -128,15 +139,6 @@ async function sendWebhookMessage(text, discordPayload = null) {
     }
 }
 
-const REWARDS = {
-    "1986632021321089024": "200 Đá Quý",
-    "1986631915360387072": "Tăng tốc 3 giờ",
-    "1986631781406900224": "Tăng tốc 8 giờ",
-    "1986631671386112000": "500 Đá Quý",
-    "1986631555921117184": "Rương Tự Chọn Vật Liệu Trang Bị",
-    "1986631409741234176": "Tăng tốc 24 giờ",
-    "1986631205541543936": "2.000 Đá Quý"
-};
 
 function sk(mall, name) {
     return `${mall}_${name}`;
@@ -233,17 +235,15 @@ async function continueReloginSequence(expectedMall, expectedAccountId, failure)
     const session = await chrome.storage.session.get(RELOGIN_SEQUENCE_KEYS);
     const queue = session.autoReloginQueue;
     const index = session.autoReloginQueueIndex ?? 0;
-    if (!Array.isArray(queue) || !queue[index]) return;
-    const current = queue[index];
-    if (current.mall !== expectedMall || current.accountId !== expectedAccountId) return;
+    const progress = progressReloginQueue(queue, index, expectedMall, expectedAccountId, failure);
+    if (!progress) return;
 
-    const failures = session.autoReloginQueueFailures || [];
-    if (failure) {
-        failures.push({ mall: expectedMall, accountId: expectedAccountId, error: failure });
+    const failures = [...(session.autoReloginQueueFailures || []), ...progress.failures];
+    if (progress.failures.length > 0) {
         await chrome.storage.session.set({ autoReloginQueueFailures: failures });
     }
 
-    let nextIndex = index + 1;
+    let nextIndex = progress.nextIndex;
     while (nextIndex < queue.length) {
         const next = queue[nextIndex];
         await chrome.storage.session.set({
@@ -265,6 +265,13 @@ async function continueReloginSequence(expectedMall, expectedAccountId, failure)
     if (failures.length > 0) {
         const errorDetails = failures.map(f => `- ${f.mall} (${f.accountId}): ${f.error}`).join("\n");
         void sendWebhookMessage(t("webhookReloginFailed", { count: failures.length, details: errorDetails }, lang));
+    } else {
+        void chrome.notifications.create({
+            type: "basic",
+            iconUrl: "images/icons/icon48.png",
+            title: t("reloginSuccessNotificationTitle", { store: STORE_NAMES[expectedMall] || expectedMall }, lang),
+            message: t("reloginSeqCompleteSuccess", {}, lang),
+        }).catch(() => {});
     }
 }
 
@@ -563,19 +570,36 @@ chrome.webRequest.onSendHeaders.addListener(
         if (!tab?.url || !mall || !isReloginStoreUrl(new URL(tab.url), mall)) return;
 
         if (mall && authHeader?.value) {
-            const reloginAccountId = details.tabId === session.autoReloginTabId &&
-                session.autoReloginMall === mall
-                ? session.autoReloginAccountId
-                : undefined;
-            const { activeAccountIds = {} } = reloginAccountId
-                ? { activeAccountIds: {} }
-                : await chrome.storage.local.get("activeAccountIds");
-            const accountId = reloginAccountId || activeAccountIds[mall] || undefined;
             const token = authHeader.value;
             try {
                 const urlObj = new URL(details.url);
                 const appUid = urlObj.searchParams.get("appUid");
                 const appId = urlObj.searchParams.get("appId");
+
+                let accountId = (details.tabId === session.autoReloginTabId && session.autoReloginMall === mall)
+                    ? session.autoReloginAccountId
+                    : undefined;
+
+                if (!accountId) {
+                    const { activeAccountIds = {}, storeAccounts = {} } = await chrome.storage.local.get(["activeAccountIds", "storeAccounts"]);
+                    const accounts = Array.isArray(storeAccounts[mall]) ? storeAccounts[mall] : [];
+                    if (appUid && accounts.length > 0) {
+                        const keys = accounts.map(a => ask(mall, a.id, "appUid"));
+                        const stored = await chrome.storage.local.get(keys);
+                        const matchingAcc = accounts.find(a => String(stored[ask(mall, a.id, "appUid")] ?? "") === String(appUid));
+                        if (matchingAcc) {
+                            accountId = matchingAcc.id;
+                            if (activeAccountIds[mall] !== accountId) {
+                                await chrome.storage.local.set({
+                                    activeAccountIds: { ...activeAccountIds, [mall]: accountId },
+                                });
+                            }
+                        }
+                    }
+                    if (!accountId) {
+                        accountId = activeAccountIds[mall] || undefined;
+                    }
+                }
 
                 const storeUpdate = {};
                 const payload = parseJwtPayload(token);
@@ -656,7 +680,8 @@ async function syncAutoCheckAlarms() {
         let utcAlarm = await chrome.alarms.get(UTC_RESET_ALARM);
         let preResetAlarm = await chrome.alarms.get(UTC_PRE_RESET_ALARM);
 
-        if (!enabled) {
+        const plan = getAlarmSyncPlan({ enabled, mode, intervalMinutes, utcResetDay });
+        if (plan.activeMode === "none") {
             if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
             if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
             if (preResetAlarm) await chrome.alarms.clear(UTC_PRE_RESET_ALARM);
@@ -664,11 +689,9 @@ async function syncAutoCheckAlarms() {
             return;
         }
 
-        if (mode === "utcReset") {
+        if (plan.activeMode === "utcReset") {
             if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
-            const periodInMinutes = (utcResetDay === "everyday" || utcResetDay === "daily")
-                ? 24 * 60
-                : 7 * 24 * 60;
+            const periodInMinutes = plan.toCreate.periodInMinutes;
             const nextTime = getNextUtcResetTime(utcResetDay);
             if (!utcAlarm || utcAlarm.periodInMinutes !== periodInMinutes || Math.abs(utcAlarm.scheduledTime - nextTime) > 1000) {
                 if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
@@ -687,9 +710,10 @@ async function syncAutoCheckAlarms() {
             // "interval" mode (custom interval)
             if (utcAlarm) await chrome.alarms.clear(UTC_RESET_ALARM);
             if (preResetAlarm) await chrome.alarms.clear(UTC_PRE_RESET_ALARM);
-            if (!intervalAlarm || intervalAlarm.periodInMinutes !== intervalMinutes) {
+            const periodInMinutes = plan.toCreate.periodInMinutes;
+            if (!intervalAlarm || intervalAlarm.periodInMinutes !== periodInMinutes) {
                 if (intervalAlarm) await chrome.alarms.clear(AUTO_CHECK_ALARM);
-                await chrome.alarms.create(AUTO_CHECK_ALARM, { periodInMinutes: intervalMinutes });
+                await chrome.alarms.create(AUTO_CHECK_ALARM, { periodInMinutes });
                 intervalAlarm = await chrome.alarms.get(AUTO_CHECK_ALARM);
                 if (intervalAlarm) {
                     console.log(`[LilithDraw] Interval check active: every ${intervalAlarm.periodInMinutes}m; next at ${new Date(intervalAlarm.scheduledTime).toLocaleString()}`);
@@ -916,18 +940,23 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                 target: { tabId, frameIds: [0] },
                 args: [autoReloginMall],
                 func: async mall => {
-                    const selector = "#renderJsxToDomDiv > div > div.adm-center-popup-wrap > div > div > section > div > footer > div:nth-child(1)";
                     const findVisibleChoice = () => {
-                        const choice = document.querySelector(selector);
-                        const popup = choice?.closest(".adm-center-popup-wrap");
-                        if (
-                            !choice ||
-                            !popup ||
-                            choice.getClientRects().length === 0 ||
-                            popup.getClientRects().length === 0 ||
-                            choice.matches(":disabled")
-                        ) return null;
-                        return choice;
+                        const candidates = [
+                            ...document.querySelectorAll(".adm-center-popup-wrap footer div, .adm-center-popup-wrap footer button, .adm-modal-footer button"),
+                        ];
+                        for (const el of candidates) {
+                            const popup = el.closest(".adm-center-popup-wrap, .adm-modal");
+                            if (
+                                popup &&
+                                el.getClientRects().length > 0 &&
+                                popup.getClientRects().length > 0 &&
+                                !el.matches(":disabled")
+                            ) {
+                                return el;
+                            }
+                        }
+                        const fallback = document.querySelector("#renderJsxToDomDiv > div > div.adm-center-popup-wrap > div > div > section > div > footer > div:nth-child(1)");
+                        return fallback && fallback.getClientRects().length > 0 ? fallback : null;
                     };
                     const choice = await new Promise(resolve => {
                         let settled = false;
@@ -1189,9 +1218,9 @@ async function getCharacterById(token, roleId, mall, accountId) {
     return roles.find(c => String(c.roleId) === String(roleId));
 }
 
-async function getManifest(token, role, mall, accountId) {
+async function getManifest(token, role, mall, accountId, cachedIdentifiers = null) {
     const lang = await getLanguage();
-    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId), lang);
+    const identifiers = cachedIdentifiers || getAppIdentifiers(await getStoreData(mall, accountId), lang);
     const config = STORE_CONFIG[mall];
     const params = new URLSearchParams({
         language: lang === "vi" ? "vi" : "en", osType: "pc",
@@ -1344,134 +1373,137 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
     }
 
     const initialStoreData = await getStoreData(mall, accountId);
-    let cachedIdentifiers = null;
+    let cachedIdentifiers;
     try {
         cachedIdentifiers = getAppIdentifiers(initialStoreData, lang);
-    } catch {}
+    } catch (err) {
+        log.push(t("missingAppIdentifiersError", {}, lang) || err.message);
+        await reportProgress();
+        return log;
+    }
     let currentTotalDraws = Number(initialStoreData.drawsLeft);
 
     let remaining = 0;
-    for (const role of roles) {
-        if (Date.now() - startedAt >= maxRuntimeMs) {
-            log.push(t("logPausedTimeout", {}, lang));
-            await flushSessionRewards();
-            await reportProgress();
-            return log;
-        }
-        try {
-            const manifest = await getManifest(token, role, mall, accountId);
-            Object.assign(sessionRewardIcons, getRewardIcons(manifest));
-            let drawCount = getRoleDrawCount(manifest, mall);
-            if (drawCount > 0) {
-                while (drawCount > 0) {
-                    if (Date.now() - startedAt >= maxRuntimeMs) {
-                        log.push(t("logPausedTimeout", {}, lang));
-                        await flushSessionRewards();
-                        await reportProgress();
-                        return log;
-                    }
-                    try {
-                        const result = await drawOnce(token, role, mall, accountId, cachedIdentifiers);
-                        const rewardId = result?.data?.rewardId;
-                        const reward = getRewardNameById(rewardId, lang) ||
-                            (result?.data?.reward ? translateRewardName(result.data.reward, lang) : null) ||
-                            (rewardId ? t("rewardFallback", { id: rewardId }, lang) : null);
-                        if (!reward) throw new Error(result?.msg || t("missingRewardInfoError", {}, lang));
-                        if (rewardId && sessionRewardIcons[rewardId] && !sessionRewardIcons[reward]) {
-                            sessionRewardIcons[reward] = sessionRewardIcons[rewardId];
-                        }
-                        log.push(`[${role.name}] x1 ${reward}`);
-                        sessionRewards[reward] = (sessionRewards[reward] || 0) + 1;
-                        if (!roleRewards.has(role)) roleRewards.set(role, {});
-                        const roleCounts = roleRewards.get(role);
-                        roleCounts[reward] = (roleCounts[reward] || 0) + 1;
-                        drawCount--;
-                        await reportProgress();
-
-                        // Decrement drawsLeft in storage progressively in real time
-                        if (Number.isFinite(currentTotalDraws) && currentTotalDraws > 0) {
-                            currentTotalDraws = Math.max(0, currentTotalDraws - 1);
-                            try {
-                                await setStoreData(mall, { drawsLeft: currentTotalDraws }, accountId);
-                            } catch (e) {
-                                console.warn("[LilithDraw] Could not decrement drawsLeft:", e);
-                            }
-                        }
-
-                        if (drawCount > 0) {
-                            await new Promise(r => setTimeout(r, 300));
-                        }
-                    } catch (drawErr) {
-                        const errMsg = drawErr.message || "";
-                        if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
-                            log.push(t("logOutOfDrawsWithReason", { name: role.name, error: errMsg }, lang));
-                            await reportProgress();
-                            drawCount = 0;
-                            break;
-                        } else if (drawErr.status === 401 || drawErr.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
-                            log.push(t("logTokenExpiredStopDraw", { name: role.name, error: errMsg }, lang));
-                            await flushSessionRewards();
-                            await reportProgress();
-                            return log;
-                        } else {
-                            throw drawErr;
-                        }
-                    }
-                }
-            } else {
-                log.push(t("logNoDrawsLeftForRole", { name: role.name }, lang));
-                await reportProgress();
-            }
-            remaining += drawCount;
-        } catch (e) {
-            const errMsg = e.message || "";
-            if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
-                log.push(t("logOutOfDrawsWithReason", { name: role.name, error: errMsg }, lang));
-                await reportProgress();
-            } else if (e.status === 401 || e.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
-                log.push(t("logTokenExpiredStopDraw", { name: role.name, error: errMsg }, lang));
-                await flushSessionRewards();
+    try {
+        for (const role of roles) {
+            if (Date.now() - startedAt >= maxRuntimeMs) {
+                log.push(t("logPausedTimeout", {}, lang));
                 await reportProgress();
                 return log;
-            } else {
-                log.push(t("logRoleError", { name: role.name, error: errMsg }, lang));
-                await reportProgress();
+            }
+            try {
+                const manifest = await getManifest(token, role, mall, accountId, cachedIdentifiers);
+                Object.assign(sessionRewardIcons, getRewardIcons(manifest));
+                let drawCount = getRoleDrawCount(manifest, mall);
+                if (drawCount > 0) {
+                    while (drawCount > 0) {
+                        if (Date.now() - startedAt >= maxRuntimeMs) {
+                            log.push(t("logPausedTimeout", {}, lang));
+                            await reportProgress();
+                            return log;
+                        }
+                        try {
+                            const result = await drawOnce(token, role, mall, accountId, cachedIdentifiers);
+                            const rewardId = result?.data?.rewardId;
+                            const reward = getRewardNameById(rewardId, lang) ||
+                                (result?.data?.reward ? translateRewardName(result.data.reward, lang) : null) ||
+                                (rewardId ? t("rewardFallback", { id: rewardId }, lang) : null);
+                            if (!reward) throw new Error(result?.msg || t("missingRewardInfoError", {}, lang));
+                            if (rewardId && sessionRewardIcons[rewardId] && !sessionRewardIcons[reward]) {
+                                sessionRewardIcons[reward] = sessionRewardIcons[rewardId];
+                            }
+                            log.push(`[${role.name}] x1 ${reward}`);
+                            sessionRewards[reward] = (sessionRewards[reward] || 0) + 1;
+                            if (!roleRewards.has(role)) roleRewards.set(role, {});
+                            const roleCounts = roleRewards.get(role);
+                            roleCounts[reward] = (roleCounts[reward] || 0) + 1;
+                            drawCount--;
+                            await reportProgress();
+
+                            // Decrement drawsLeft in storage progressively in real time
+                            if (Number.isFinite(currentTotalDraws) && currentTotalDraws > 0) {
+                                currentTotalDraws = Math.max(0, currentTotalDraws - 1);
+                                try {
+                                    await setStoreData(mall, { drawsLeft: currentTotalDraws }, accountId);
+                                } catch (e) {
+                                    console.warn("[LilithDraw] Could not decrement drawsLeft:", e);
+                                }
+                            }
+
+                            if (drawCount > 0) {
+                                await new Promise(r => setTimeout(r, 300));
+                            }
+                        } catch (drawErr) {
+                            const errMsg = drawErr.message || "";
+                            if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
+                                log.push(t("logOutOfDrawsWithReason", { name: role.name, error: errMsg }, lang));
+                                await reportProgress();
+                                drawCount = 0;
+                                break;
+                            } else if (drawErr.status === 401 || drawErr.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
+                                log.push(t("logTokenExpiredStopDraw", { name: role.name, error: errMsg }, lang));
+                                await reportProgress();
+                                return log;
+                            } else {
+                                throw drawErr;
+                            }
+                        }
+                    }
+                } else {
+                    log.push(t("logNoDrawsLeftForRole", { name: role.name }, lang));
+                    await reportProgress();
+                }
+                remaining += drawCount;
+            } catch (e) {
+                const errMsg = e.message || "";
+                if (/resource not enough|not enough|không đủ|hết lượt/i.test(errMsg)) {
+                    log.push(t("logOutOfDrawsWithReason", { name: role.name, error: errMsg }, lang));
+                    await reportProgress();
+                } else if (e.status === 401 || e.status === 403 || /hết hạn|expired|invalid/i.test(errMsg)) {
+                    log.push(t("logTokenExpiredStopDraw", { name: role.name, error: errMsg }, lang));
+                    await reportProgress();
+                    return log;
+                } else {
+                    log.push(t("logRoleError", { name: role.name, error: errMsg }, lang));
+                    await reportProgress();
+                }
+            }
+            // Send webhook notification immediately after a character finishes drawing (if rewards won)
+            const charRewards = roleRewards.get(role);
+            if (charRewards && Object.keys(charRewards).length > 0) {
+                const storeName = STORE_NAMES[mall] || mall;
+                const wonCount = Object.values(charRewards).reduce((a, b) => a + b, 0);
+                const lines = Object.entries(charRewards).map(([name, count]) => {
+                    const icon = sessionRewardIcons[name];
+                    return icon ? `  x${count} ${name}: ${icon}` : `  x${count} ${name}`;
+                }).join("\n");
+                const avatar = role.avatar ? `\n  Avatar: ${role.avatar}` : "";
+                const notifyText = t("webhookDrawCompleteText", { store: storeName, count: wonCount, name: role.name, avatar, lines }, lang);
+                const discordPayload = {
+                    username: "Lucky Draw Bot",
+                    content: t("webhookDrawCompleteDiscord", { store: storeName, count: wonCount, name: role.name }, lang),
+                    embeds: [buildSingleDiscordRewardEmbed(storeName, role, charRewards, sessionRewardIcons, lang)],
+                };
+                void sendWebhookMessage(notifyText, discordPayload);
+                await new Promise(r => setTimeout(r, 800));
             }
         }
-        // Send webhook notification immediately after a character finishes drawing (if rewards won)
-        const charRewards = roleRewards.get(role);
-        if (charRewards && Object.keys(charRewards).length > 0) {
-            const storeName = STORE_NAMES[mall] || mall;
-            const wonCount = Object.values(charRewards).reduce((a, b) => a + b, 0);
-            const lines = Object.entries(charRewards).map(([name, count]) => {
-                const icon = sessionRewardIcons[name];
-                return icon ? `  x${count} ${name}: ${icon}` : `  x${count} ${name}`;
-            }).join("\n");
-            const avatar = role.avatar ? `\n  Avatar: ${role.avatar}` : "";
-            const notifyText = t("webhookDrawCompleteText", { store: storeName, count: wonCount, name: role.name, avatar, lines }, lang);
-            const discordPayload = {
-                username: "Lucky Draw Bot",
-                content: t("webhookDrawCompleteDiscord", { store: storeName, count: wonCount, name: role.name }, lang),
-                embeds: [buildSingleDiscordRewardEmbed(storeName, role, charRewards, sessionRewardIcons, lang)],
-            };
-            void sendWebhookMessage(notifyText, discordPayload);
-            await new Promise(r => setTimeout(r, 500));
+
+        // Draws left = what each role still had after its loop; avoids re-fetching every manifest.
+        // When filteredByFavorites is true, non-favorite roles weren't looped, so keep decremented currentTotalDraws.
+        const finalDrawsLeft = (filteredByFavorites && Number.isFinite(currentTotalDraws))
+            ? currentTotalDraws
+            : remaining;
+        const localeTag = lang === "vi" ? "vi-VN" : "en-US";
+        try {
+            await setStoreData(mall, { drawsLeft: finalDrawsLeft, lastCheck: new Date().toLocaleString(localeTag) }, accountId);
+        } catch (e) {
+            console.warn("[LilithDraw] Could not refresh drawsLeft after runDraws:", e);
         }
+    } finally {
+        await flushSessionRewards();
     }
 
-    // Draws left = what each role still had after its loop; avoids re-fetching every manifest.
-    // When filteredByFavorites is true, non-favorite roles weren't looped, so keep decremented currentTotalDraws.
-    const finalDrawsLeft = (filteredByFavorites && Number.isFinite(currentTotalDraws))
-        ? currentTotalDraws
-        : remaining;
-    const localeTag = lang === "vi" ? "vi-VN" : "en-US";
-    try {
-        await setStoreData(mall, { drawsLeft: finalDrawsLeft, lastCheck: new Date().toLocaleString(localeTag) }, accountId);
-    } catch (e) {
-        console.warn("[LilithDraw] Could not refresh drawsLeft after runDraws:", e);
-    }
-
-    await flushSessionRewards();
     log.push("Done!");
     await reportProgress();
     return log;
@@ -1722,7 +1754,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     ? t("reloginSuccessStatus", { store: storeName }, lang)
                     : t("reloginFailedStatus", { store: storeName, error: String(msg.error || t("unknownError", {}, lang)) }, lang),
             });
-            if (!msg.success) {
+            if (msg.success) {
+                void chrome.notifications.create({
+                    type: "basic",
+                    iconUrl: "images/icons/icon48.png",
+                    title: t("reloginSuccessNotificationTitle", { store: storeName }, lang),
+                    message: t("reloginSuccessStatus", { store: storeName }, lang),
+                }).catch(() => {});
+            } else {
                 void chrome.notifications.create({
                     type: "basic",
                     iconUrl: "images/icons/icon48.png",

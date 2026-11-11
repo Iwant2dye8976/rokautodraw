@@ -422,7 +422,7 @@ const TRANSLATIONS = {
         reloginFailedNotificationTitle: "{store} login failed",
         unknownError: "Unknown error",
         noValidWebhookUrlError: "No valid webhook URL configured.",
-        webhookTestMessage: "🔔 [ROK Auto] Webhook connection test successful!",
+        webhookTestMessage: "[ROK Auto] Webhook connection test successful!",
         allWebhooksFailedError: "All webhooks failed to send.",
         drawAlreadyRunningError: "A draw is already in progress for this store",
         noTokenInStorageError: "No token in storage. Please open the store page first.",
@@ -430,6 +430,41 @@ const TRANSLATIONS = {
         logDrawError: "Error during draw: {error}",
         invalidSurveySourceError: "Invalid survey request source",
         surveySuccessDefault: "Success",
+
+        // Notification Toasts (Zero Emoji)
+        notifySuccess: "Success",
+        notifyFailed: "Failed",
+        notifyError: "Error",
+        notifyInfo: "Notice",
+        dismissNotification: "Dismiss notification",
+        reloginSuccessNotificationTitle: "{store} login verified",
+        notifyCharsRefreshed: "Character list updated successfully",
+        notifyCharsRefreshFailed: "Could not refresh characters: {error}",
+        notifyTokenCaptured: "Token captured successfully",
+        notifyTokenCaptureFailed: "Could not open store to get token: {error}",
+        notifyDrawStarted: "Starting lucky draw...",
+        notifyDrawCompleted: "Lucky draw completed",
+        notifyLoginCheckStarted: "Checking login for {store}...",
+        notifyLoginCheckSuccess: "{store} login verified successfully",
+        notifyLoginCheckFailed: "{store} login failed: {error}",
+        notifyLoginCheckAllStarted: "Checking {count} {store} accounts...",
+        notifyLoginCheckAllCompleted: "{store} check complete: {success} passed, {failed} failed",
+        notifyAccountsSaved: "Account credentials saved",
+        notifyAccountsSaveFailed: "Could not save accounts: {error}",
+        notifySettingsSaved: "Settings saved",
+        notifySettingsSaveFailed: "Could not save setting: {error}",
+        notifyWebhookSaved: "Webhook configuration saved",
+        notifyConfigExported: "Configuration exported",
+        notifyConfigImported: "Configuration imported successfully",
+        notifyConfigImportFailed: "Could not import configuration: {error}",
+        notifyDataCleared: "Data cleared successfully",
+        notifyCopied: "Copied to clipboard",
+        confirmDeleteTitle: "Confirm Deletion",
+        confirmDeleteAccount: "Are you sure you want to delete {name}? This cannot be undone.",
+        confirmClearAccountsTitle: "Delete All Accounts",
+        confirmClearRewardsTitle: "Clear Draw History",
+        modalCancelBtn: "Cancel",
+        modalDeleteBtn: "Delete",
     },
     vi: {
         // Header & Navigation
@@ -799,7 +834,7 @@ const TRANSLATIONS = {
         reloginFailedNotificationTitle: "Đăng nhập {store} thất bại",
         unknownError: "Lỗi không xác định",
         noValidWebhookUrlError: "Chưa có URL webhook nào hợp lệ.",
-        webhookTestMessage: "🔔 [ROK Auto] Kiểm tra kết nối Webhook thành công!",
+        webhookTestMessage: "[ROK Auto] Kiểm tra kết nối Webhook thành công!",
         allWebhooksFailedError: "Tất cả webhook đều gửi thất bại.",
         drawAlreadyRunningError: "Đang có lượt quay chạy cho cửa hàng này",
         noTokenInStorageError: "Không có token trong bộ nhớ. Vui lòng mở trang quay thưởng trước.",
@@ -807,6 +842,41 @@ const TRANSLATIONS = {
         logDrawError: "Lỗi khi quay thưởng: {error}",
         invalidSurveySourceError: "Nguồn yêu cầu khảo sát không hợp lệ",
         surveySuccessDefault: "Thành công",
+
+        // Notification Toasts (Zero Emoji)
+        notifySuccess: "Thành công",
+        notifyFailed: "Thất bại",
+        notifyError: "Lỗi",
+        notifyInfo: "Thông báo",
+        dismissNotification: "Đóng thông báo",
+        reloginSuccessNotificationTitle: "Đăng nhập {store} thành công",
+        notifyCharsRefreshed: "Đã cập nhật danh sách nhân vật",
+        notifyCharsRefreshFailed: "Không thể làm mới nhân vật: {error}",
+        notifyTokenCaptured: "Đã lấy token thành công",
+        notifyTokenCaptureFailed: "Không thể mở cửa hàng để lấy token: {error}",
+        notifyDrawStarted: "Bắt đầu quay thưởng...",
+        notifyDrawCompleted: "Đã hoàn thành quay thưởng",
+        notifyLoginCheckStarted: "Đang kiểm tra đăng nhập {store}...",
+        notifyLoginCheckSuccess: "Đăng nhập {store} thành công",
+        notifyLoginCheckFailed: "Đăng nhập {store} thất bại: {error}",
+        notifyLoginCheckAllStarted: "Đang kiểm tra {count} tài khoản {store}...",
+        notifyLoginCheckAllCompleted: "Kiểm tra {store} hoàn tất: {success} thành công, {failed} thất bại",
+        notifyAccountsSaved: "Đã lưu thông tin tài khoản",
+        notifyAccountsSaveFailed: "Không thể lưu tài khoản: {error}",
+        notifySettingsSaved: "Đã lưu cài đặt",
+        notifySettingsSaveFailed: "Không thể lưu cài đặt: {error}",
+        notifyWebhookSaved: "Đã lưu cấu hình webhook",
+        notifyConfigExported: "Đã xuất cấu hình",
+        notifyConfigImported: "Đã nhập cấu hình thành công",
+        notifyConfigImportFailed: "Không thể nhập cấu hình: {error}",
+        notifyDataCleared: "Đã xóa dữ liệu thành công",
+        notifyCopied: "Đã sao chép vào bộ nhớ tạm",
+        confirmDeleteTitle: "Xác nhận xóa",
+        confirmDeleteAccount: "Bạn có chắc chắn muốn xóa {name}? Thao tác này không thể hoàn tác.",
+        confirmClearAccountsTitle: "Xóa tất cả tài khoản",
+        confirmClearRewardsTitle: "Xóa lịch sử quay thưởng",
+        modalCancelBtn: "Hủy",
+        modalDeleteBtn: "Xóa",
     },
 };
 
@@ -1112,18 +1182,28 @@ function normalizeSearchText(str) {
 function matchesSearch(role, rawQuery) {
     const q = rawQuery.trim().toLowerCase();
     if (!q) return true;
-    const qNorm = normalizeSearchText(q);
-    const name = String(role.name ?? "").toLowerCase();
-    const id = String(role.roleId ?? "").toLowerCase();
-    const svr = String(role.svrId ?? "").toLowerCase();
-    return name.includes(q) || id.includes(q) || svr.includes(q) ||
+    const qClean = q.replace(/^#/, "");
+    const qNorm = normalizeSearchText(qClean);
+    const name = String(role?.name ?? "").toLowerCase();
+    const id = String(role?.roleId ?? "").toLowerCase();
+    const svr = String(role?.svrId ?? "").toLowerCase();
+    return name.includes(q) || id.includes(q) || svr.includes(qClean) ||
+        name.includes(qClean) || id.includes(qClean) ||
         normalizeSearchText(name).includes(qNorm) ||
         normalizeSearchText(svr).includes(qNorm);
 }
 
+function escapeCsvCell(cell) {
+    let str = String(cell ?? "");
+    if (/^[=+\-@]/.test(str)) {
+        str = "'" + str;
+    }
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
 function toCsv(rows) {
     return "\uFEFF" + rows
-        .map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+        .map(row => row.map(escapeCsvCell).join(","))
         .join("\r\n");
 }
 
@@ -1170,15 +1250,50 @@ function getRewardPoints(rewardName) {
 }
 
 function filterRolesForDraw(roles, favIds, drawFavoritesOnly) {
-    const favSet = new Set(Array.isArray(favIds) ? favIds : []);
-    const sorted = [...(roles || [])].sort((a, b) => (favSet.has(b.roleId) ? 1 : 0) - (favSet.has(a.roleId) ? 1 : 0));
+    const favSet = new Set((Array.isArray(favIds) ? favIds : []).map(id => String(id ?? "")));
+    const sorted = [...(roles || [])].sort((a, b) => {
+        const aFav = favSet.has(String(a?.roleId ?? "")) ? 1 : 0;
+        const bFav = favSet.has(String(b?.roleId ?? "")) ? 1 : 0;
+        return bFav - aFav;
+    });
     if (drawFavoritesOnly) {
-        const favRoles = sorted.filter(r => favSet.has(r.roleId));
+        const favRoles = sorted.filter(r => favSet.has(String(r?.roleId ?? "")));
         if (favRoles.length > 0) {
             return { rolesToDraw: favRoles, filteredByFavorites: true };
         }
     }
     return { rolesToDraw: sorted, filteredByFavorites: false };
+}
+
+function progressReloginQueue(queue, currentIndex, expectedMall, expectedAccountId, failure = null) {
+    if (!Array.isArray(queue) || !queue[currentIndex]) return null;
+    const current = queue[currentIndex];
+    if (current.mall !== expectedMall || current.accountId !== expectedAccountId) return null;
+    const failures = failure ? [{ mall: expectedMall, accountId: expectedAccountId, error: failure }] : [];
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < queue.length) {
+        return { nextIndex, nextItem: queue[nextIndex], failures, finished: false };
+    }
+    return { nextIndex, nextItem: null, failures, finished: true };
+}
+
+function getAlarmSyncPlan({ enabled, mode, intervalMinutes, utcResetDay }) {
+    if (!enabled) {
+        return { toClear: ["dailyResetCheck", "utcResetCheck", "utcPreResetRelogin"], toCreate: null, activeMode: "none" };
+    }
+    if (mode === "utcReset") {
+        const periodInMinutes = (utcResetDay === "everyday" || utcResetDay === "daily") ? 24 * 60 : 7 * 24 * 60;
+        return {
+            toClear: ["dailyResetCheck"],
+            toCreate: { name: "utcResetCheck", periodInMinutes },
+            activeMode: "utcReset",
+        };
+    }
+    return {
+        toClear: ["utcResetCheck", "utcPreResetRelogin"],
+        toCreate: { name: "dailyResetCheck", periodInMinutes: intervalMinutes || 60 },
+        activeMode: "interval",
+    };
 }
 
 function mergeWeeklyStats(existingWeeklyStats, weekKey, mall, roleRewardsEntries) {
@@ -1393,9 +1508,9 @@ if (typeof module !== "undefined") {
         parseJwtPayload, getJwtExp, isJwtExpired, isJwtExpiringSoon, isExpiredTokenResponse, parseWebhookUrls, buildWebhookBody,
         getRewardIcons, buildSingleDiscordRewardEmbed, getRoleDrawCount,
         getNextUtcResetTime, getPreResetReloginTime, getCurrentWeekKey, getTodayUtcDateString, isUtcResetMissed,
-        normalizeSearchText, matchesSearch, toCsv,
+        normalizeSearchText, matchesSearch, toCsv, escapeCsvCell,
         stripStoreAccountsPasswords, mergeRewardTotals, REWARD_POINTS, getRewardPoints,
-        filterRolesForDraw, mergeWeeklyStats, encryptJsonWithPassphrase, decryptJsonWithPassphrase,
+        filterRolesForDraw, progressReloginQueue, getAlarmSyncPlan, mergeWeeklyStats, encryptJsonWithPassphrase, decryptJsonWithPassphrase,
         buildExportSettings, CONFIG_SETTING_VALIDATORS, POPUP_TABS, normalizePopupTab,
         SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, normalizeLanguage,
         REWARDS_BY_ID, getRewardNameById, translateRewardName, normalizeTranslatedRewards,

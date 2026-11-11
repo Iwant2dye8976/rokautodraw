@@ -408,6 +408,115 @@ function setStatus(text, state = null) {
     }
 }
 
+let toastTimer = null;
+
+function showToast({ type = "info", title = "", message = "", duration = 4000 } = {}) {
+    const card = document.getElementById("toastCard");
+    const titleEl = document.getElementById("toastTitle");
+    const msgEl = document.getElementById("toastMessage");
+    if (!card || !msgEl) return;
+
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+    }
+
+    card.classList.remove("is-success", "is-error", "is-info");
+    const normalizedType = type === "success" ? "is-success" : (type === "error" || type === "failed" ? "is-error" : "is-info");
+    card.classList.add(normalizedType);
+
+    titleEl.textContent = title || "";
+    msgEl.textContent = message || "";
+    card.hidden = false;
+
+    if (duration > 0) {
+        toastTimer = setTimeout(() => {
+            hideToast();
+        }, duration);
+    }
+}
+
+function hideToast() {
+    const card = document.getElementById("toastCard");
+    if (!card) return;
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+    }
+    card.hidden = true;
+}
+
+document.getElementById("toastCloseBtn")?.addEventListener("click", hideToast);
+
+let confirmModalResolver = null;
+
+function showConfirmModal({ title = "", message = "", confirmText = "", cancelText = "" } = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById("confirmModal");
+        const titleEl = document.getElementById("confirmModalTitle");
+        const msgEl = document.getElementById("confirmModalMessage");
+        const confirmBtn = document.getElementById("confirmModalConfirmBtn");
+        const cancelBtn = document.getElementById("confirmModalCancelBtn");
+
+        if (!modal || !confirmBtn || !cancelBtn) {
+            resolve(false);
+            return;
+        }
+
+        // Clean up previous resolver if modal was reopened before resolving
+        if (confirmModalResolver) {
+            confirmModalResolver(false);
+            confirmModalResolver = null;
+        }
+
+        confirmModalResolver = resolve;
+
+        if (titleEl) titleEl.textContent = title || tr("confirmDeleteTitle");
+        if (msgEl) msgEl.textContent = message || "";
+        confirmBtn.textContent = confirmText || tr("modalDeleteBtn");
+        cancelBtn.textContent = cancelText || tr("modalCancelBtn");
+
+        modal.hidden = false;
+        cancelBtn.focus();
+    });
+}
+
+function closeConfirmModal(result = false) {
+    const modal = document.getElementById("confirmModal");
+    if (modal) {
+        modal.hidden = true;
+    }
+    if (confirmModalResolver) {
+        const resolve = confirmModalResolver;
+        confirmModalResolver = null;
+        resolve(Boolean(result));
+    }
+}
+
+document.getElementById("confirmModalConfirmBtn")?.addEventListener("click", () => {
+    closeConfirmModal(true);
+});
+
+document.getElementById("confirmModalCancelBtn")?.addEventListener("click", () => {
+    closeConfirmModal(false);
+});
+
+document.getElementById("confirmModal")?.addEventListener("click", (e) => {
+    if (e.target === document.getElementById("confirmModal")) {
+        closeConfirmModal(false);
+    }
+});
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+        const modal = document.getElementById("confirmModal");
+        if (modal && !modal.hidden) {
+            e.preventDefault();
+            closeConfirmModal(false);
+        }
+    }
+});
+
 function showLog() {
     if (logWrap) logWrap.style.display = "";
     logEl.classList.add("visible");
@@ -1243,12 +1352,21 @@ function renderAccountRows(mall) {
         remove.innerHTML = SVG_ICONS.close;
         remove.title = tr("removeAccountTitle");
         remove.setAttribute("aria-label", tr("removeAccountTitle"));
-        remove.addEventListener("click", (e) => {
+        remove.addEventListener("click", async (e) => {
             e.stopPropagation();
+            const displayName = account.username ? `"${account.username}"` : tr("unnamedAccount");
+            const confirmed = await showConfirmModal({
+                title: tr("confirmDeleteTitle"),
+                message: tr("confirmDeleteAccount", { name: displayName }),
+                confirmText: tr("modalDeleteBtn"),
+                cancelText: tr("modalCancelBtn"),
+            });
+            if (!confirmed) return;
             accountExpandedState.delete(account.id);
             accountsByMall[mall] = accountsByMall[mall].filter(item => item.id !== account.id);
             renderAccountRows(mall);
             void renderActiveAccountPicker(getSelectedMall());
+            showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDataCleared") });
         });
         actions.append(disclosure, remove);
         heading.append(title, actions);
@@ -1571,18 +1689,25 @@ autoReloginCheckbox.addEventListener("change", async () => {
 document.getElementById("saveLoginBtn").addEventListener("click", async () => {
     try {
         await persistLoginAccounts({ saveAutoRelogin: true });
-        setLoginSettingsStatus(
-            autoReloginCheckbox.checked
-                ? tr("accountsSavedAutoStatus")
-                : tr("credentialsSavedStatus")
-        );
+        const statusMsg = autoReloginCheckbox.checked
+            ? tr("accountsSavedAutoStatus")
+            : tr("credentialsSavedStatus");
+        setLoginSettingsStatus(statusMsg);
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyAccountsSaved") });
     } catch (error) {
         setLoginSettingsStatus(tr("saveGenericError", { error: error.message }));
+        showToast({ type: "error", title: tr("notifyFailed"), message: tr("notifyAccountsSaveFailed", { error: error.message }) });
     }
 });
 
 document.getElementById("clearLoginBtn").addEventListener("click", async () => {
-    if (!confirm(tr("confirmClearAccounts"))) {
+    const confirmed = await showConfirmModal({
+        title: tr("confirmClearAccountsTitle"),
+        message: tr("confirmClearAccounts"),
+        confirmText: tr("modalDeleteBtn"),
+        cancelText: tr("modalCancelBtn"),
+    });
+    if (!confirmed) {
         return;
     }
     try {
@@ -1601,6 +1726,7 @@ document.getElementById("clearLoginBtn").addEventListener("click", async () => {
         accountsByMall = { plutomall: [], lilithstore: [] };
         await loadSavedLoginCredentials();
         setLoginSettingsStatus(tr("accountsClearedStatus"));
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDataCleared") });
     } catch (error) {
         try {
             const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
@@ -1609,6 +1735,7 @@ document.getElementById("clearLoginBtn").addEventListener("click", async () => {
             console.error("Could not restore auto-relogin setting:", stateError);
         }
         setLoginSettingsStatus(tr("clearAccountsError", { error: error.message }));
+        showToast({ type: "error", title: tr("notifyFailed"), message: tr("clearAccountsError", { error: error.message }) });
     }
 });
 
@@ -1636,11 +1763,14 @@ async function testRelogin(mall, accountId) {
         return;
     }
     setLoginSettingsStatus(tr("testingAndOpeningTabStatus", { store: storeName }));
+    showToast({ type: "info", title: tr("notifyInfo"), message: tr("notifyLoginCheckStarted", { store: storeName }) });
     chrome.runtime.sendMessage({ action: "testRelogin", mall, accountId }, response => {
         if (chrome.runtime.lastError) {
             setLoginSettingsStatus(tr("sendRequestError", { error: chrome.runtime.lastError.message }));
+            showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
         } else if (response?.error) {
             setLoginSettingsStatus(tr("testFailedError", { error: response.error }));
+            showToast({ type: "error", title: tr("notifyFailed"), message: response.error });
         } else if (response?.ok) {
             setLoginSettingsStatus(tr("openedBgTabStatus", { store: storeName }));
         } else {
@@ -1689,6 +1819,7 @@ for (const [buttonId, mall] of [
             setLoginSettingsStatus(tr("noFullStoreAccountsPrompt", { store: storeName }));
             return;
         }
+        showToast({ type: "info", title: tr("notifyInfo"), message: tr("notifyLoginCheckAllStarted", { count: accounts.length, store: storeName }) });
         chrome.runtime.sendMessage({
             action: "testReloginSequence",
             mall,
@@ -1696,8 +1827,10 @@ for (const [buttonId, mall] of [
         }, response => {
             if (chrome.runtime.lastError) {
                 setLoginSettingsStatus(tr("sendRequestError", { error: chrome.runtime.lastError.message }));
+                showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
             } else if (response?.error) {
                 setLoginSettingsStatus(tr("testCannotStartError", { error: response.error }));
+                showToast({ type: "error", title: tr("notifyFailed"), message: response.error });
             } else {
                 setLoginSettingsStatus(tr("testingSequentialAccountsStatus", { count: accounts.length, store: storeName }));
             }
@@ -1849,8 +1982,10 @@ document.getElementById("exportConfigBtn").addEventListener("click", async () =>
         link.remove();
         setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
         configSettingsStatus.textContent = tr("exportedSettingsStatus", { count: Object.keys(settings).length });
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyConfigExported") });
     } catch (error) {
         configSettingsStatus.textContent = tr("exportConfigError", { error: error.message });
+        showToast({ type: "error", title: tr("notifyFailed"), message: error.message });
     }
 });
 
@@ -2022,8 +2157,10 @@ importConfigFile.addEventListener("change", async () => {
             await renderCache(getSelectedMall());
         }
         configSettingsStatus.textContent = tr("importedSettingsStatus", { count: importedSettingCount, file: file.name });
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyConfigImported") });
     } catch (error) {
         configSettingsStatus.textContent = tr("importConfigError", { error: error.message });
+        showToast({ type: "error", title: tr("notifyFailed"), message: tr("notifyConfigImportFailed", { error: error.message }) });
     } finally {
         importConfigFile.value = "";
     }
@@ -2154,6 +2291,7 @@ if (saveDiscordWebhookBtn && discordWebhookUrlInput) {
         await chrome.storage.local.set({ discordWebhookUrl: urlText });
         const count = parseWebhookUrls(urlText).length;
         setDiscordWebhookStatus(count > 0 ? tr("discordWebhookSavedStatus", { count }) : tr("discordWebhookSavedEmptyStatus"));
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyWebhookSaved") });
     });
 }
 
@@ -2165,14 +2303,18 @@ function handleWebhookTest(btn, type, urlInput, setStatusFn) {
         btn.disabled = false;
         if (chrome.runtime.lastError) {
             setStatusFn(tr("webhookExtError", { error: chrome.runtime.lastError.message }));
+            showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
             return;
         }
         if (res?.ok) {
             const success = res.successCount ?? 1;
             const total = res.totalCount ?? success;
             setStatusFn(tr("webhookTestSuccess", { success, total }));
+            showToast({ type: "success", title: tr("notifySuccess"), message: tr("webhookTestSuccess", { success, total }) });
         } else {
-            setStatusFn(tr("webhookTestFailed", { error: res?.error || tr("webhookCheckUrlFallback") }));
+            const err = res?.error || tr("webhookCheckUrlFallback");
+            setStatusFn(tr("webhookTestFailed", { error: err }));
+            showToast({ type: "error", title: tr("notifyFailed"), message: err });
         }
     });
 }
@@ -2191,6 +2333,7 @@ if (telegramWebhookEnabledCheckbox) {
         }
         await chrome.storage.local.set({ telegramWebhookEnabled: enabled });
         setTelegramWebhookStatus(enabled ? tr("telegramWebhookEnabledStatus") : tr("telegramWebhookDisabledStatus"));
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifySettingsSaved") });
     });
 }
 
@@ -2200,6 +2343,7 @@ if (saveTelegramWebhookBtn && telegramWebhookUrlInput) {
         await chrome.storage.local.set({ telegramWebhookUrl: urlText });
         const count = parseWebhookUrls(urlText).length;
         setTelegramWebhookStatus(count > 0 ? tr("telegramWebhookSavedStatus", { count }) : tr("telegramWebhookSavedEmptyStatus"));
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyWebhookSaved") });
     });
 }
 
@@ -2369,9 +2513,16 @@ if (exportRewardsCsvBtn) {
 const clearRewardsBtn = document.getElementById("clearRewardsBtn");
 if (clearRewardsBtn) {
     clearRewardsBtn.addEventListener("click", async () => {
-        if (!confirm(tr("confirmClearRewards"))) return;
+        const confirmed = await showConfirmModal({
+            title: tr("confirmClearRewardsTitle"),
+            message: tr("confirmClearRewards"),
+            confirmText: tr("modalDeleteBtn"),
+            cancelText: tr("modalCancelBtn"),
+        });
+        if (!confirmed) return;
         await chrome.storage.local.remove(["rewardTotals", "weeklyStats"]);
         await renderRewardTotals();
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDataCleared") });
     });
 }
 renderRewardTotals();
@@ -2424,7 +2575,16 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         telegramWebhookUrlInput.value = changes.telegramWebhookUrl.newValue || "";
     }
     if (changes.autoReloginStatus?.newValue) {
-        setLoginSettingsStatus(changes.autoReloginStatus.newValue);
+        const statusMsg = changes.autoReloginStatus.newValue;
+        setLoginSettingsStatus(statusMsg);
+        const lower = statusMsg.toLowerCase();
+        if (lower.includes("thành công") || lower.includes("successfully") || lower.includes("success")) {
+            showToast({ type: "success", title: tr("notifySuccess"), message: statusMsg });
+        } else if (lower.includes("thất bại") || lower.includes("failed") || lower.includes("error") || lower.includes("lỗi")) {
+            showToast({ type: "error", title: tr("notifyFailed"), message: statusMsg, duration: 6000 });
+        } else {
+            showToast({ type: "info", title: tr("notifyInfo"), message: statusMsg });
+        }
     }
     if (changes.currentMall?.newValue) {
         const newMall = changes.currentMall.newValue;
@@ -2486,17 +2646,22 @@ document.getElementById("captureBtn").addEventListener("click", async () => {
             await chrome.tabs.create({ url: MALL_URLS[mall], active: true });
         }
         setStatus(tr("openStoreSuccess"), null);
+        showToast({ type: "info", title: tr("notifyInfo"), message: tr("openStoreSuccess") });
     } catch (error) {
         setStatus(tr("openStoreError", { error: error.message }));
+        showToast({ type: "error", title: tr("notifyFailed"), message: tr("notifyTokenCaptureFailed", { error: error.message }) });
     }
 });
 
 document.getElementById("refreshCharsBtn").addEventListener("click", async () => {
     try {
+        showToast({ type: "info", message: tr("refreshing") });
         await persistLoginAccounts({ validate: false });
         await fetchAndRender(getSelectedMall());
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyCharsRefreshed") });
     } catch (error) {
         setStatus(tr("refreshError", { error: error.message }));
+        showToast({ type: "error", title: tr("notifyFailed"), message: tr("notifyCharsRefreshFailed", { error: error.message }) });
     }
 });
 
@@ -2505,6 +2670,7 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
         await persistLoginAccounts({ validate: false });
     } catch (error) {
         setStatus(tr("drawError", { error: error.message }));
+        showToast({ type: "error", title: tr("notifyFailed"), message: tr("drawError", { error: error.message }) });
         return;
     }
     const mall = getSelectedMall();
@@ -2514,23 +2680,28 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
     btn.textContent = tr("drawingBtn");
     showLog();
     logEl.textContent = tr("startingDraw");
+    showToast({ type: "info", message: tr("notifyDrawStarted") });
 
     chrome.runtime.sendMessage({ action: "drawNow", mall, accountId }, (res) => {
         btn.disabled = false;
         btn.textContent = tr("drawNowBtn");
         if (chrome.runtime.lastError) {
             setStatus(chrome.runtime.lastError.message);
+            showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
             return;
         }
         if (res?.error) {
             const isExp = /hết hạn|expired|invalid|401|403/i.test(res.error);
             setStatus(isExp ? tr("tokenExpired") : (res.error.length > 25 ? res.error.slice(0, 25) + "…" : res.error), false);
+            showToast({ type: "error", title: tr("notifyFailed"), message: res.error });
             return;
         }
         if (res?.drawsLeft === 0) {
             logEl.textContent = tr("checkCompleteNoDraws");
+            showToast({ type: "info", title: tr("notifyInfo"), message: tr("checkCompleteNoDraws") });
             return;
         }
+        showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDrawCompleted") });
         void renderCache(mall);
     });
 });
@@ -2588,17 +2759,21 @@ if (drawAllBtn) {
         drawAllBtn.textContent = tr("drawingAllBtn");
         showLog();
         logEl.textContent = tr("startingDrawAll");
+        showToast({ type: "info", message: tr("startingDrawAll") });
         chrome.runtime.sendMessage({ action: "drawAll" }, res => {
             drawAllBtn.disabled = false;
             drawAllBtn.textContent = tr("drawAllBtn");
             if (chrome.runtime.lastError) {
                 setStatus(chrome.runtime.lastError.message);
+                showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
                 return;
             }
             if (res?.error) {
                 setStatus(res.error, false);
+                showToast({ type: "error", title: tr("notifyFailed"), message: res.error });
                 return;
             }
+            showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDrawCompleted") });
             void renderCache(getSelectedMall());
         });
     });

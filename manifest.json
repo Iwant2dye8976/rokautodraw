@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ROK Weekly Auto",
-  "version": "1.1",
+  "version": "1.5",
   "permissions": [
     "storage",
     "tabs",
@@ -45,6 +45,17 @@
       "js": [
         "content.js"
       ]
+    },
+    {
+      "matches": [
+        "https://passport-global.lilith.com/*",
+        "https://passport.pup.vn/*"
+      ],
+      "js": [
+        "relogin-interceptor.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
     },
     {
       "matches": [

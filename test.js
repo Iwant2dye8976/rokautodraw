@@ -22,11 +22,14 @@ const {
     normalizeSearchText,
     matchesSearch,
     toCsv,
+    escapeCsvCell,
     stripStoreAccountsPasswords,
     mergeRewardTotals,
     buildExportSettings,
     CONFIG_SETTING_VALIDATORS,
     filterRolesForDraw,
+    progressReloginQueue,
+    getAlarmSyncPlan,
     getCurrentWeekKey,
     getRewardPoints,
     mergeWeeklyStats,
@@ -121,34 +124,24 @@ test("matchesSearch handles Vietnamese names and server IDs", () => {
     assert.equal(matchesSearch(role, "chien"), true, "Diacritics insensitive");
     assert.equal(matchesSearch(role, "doc co"), true, "d vs đ match");
     assert.equal(matchesSearch(role, "1055"), true, "Server ID match");
+    assert.equal(matchesSearch(role, "#1055"), true, "Server ID match with # prefix");
+    assert.equal(matchesSearch(role, "  #1055  "), true, "Trimmed # prefix match");
     assert.equal(matchesSearch(role, "9999"), false, "Non-matching query");
 });
 
 // --- 7. Multi-mall relogin queue progression ---
-function progressQueue(queue, currentIndex, expectedMall, expectedAccountId, failure) {
-    if (!Array.isArray(queue) || !queue[currentIndex]) return null;
-    const current = queue[currentIndex];
-    if (current.mall !== expectedMall || current.accountId !== expectedAccountId) return null;
-    const failures = failure ? [{ mall: expectedMall, accountId: expectedAccountId, error: failure }] : [];
-    const nextIndex = currentIndex + 1;
-    if (nextIndex < queue.length) {
-        return { nextIndex, nextItem: queue[nextIndex], failures };
-    }
-    return { finished: true, failures };
-}
-
 test("relogin queue advances sequentially across multiple stores", () => {
     const queue = [
         { mall: "plutomall", accountId: "p1" },
         { mall: "lilithstore", accountId: "l1" },
     ];
-    assert.equal(progressQueue(queue, 0, "lilithstore", "p1"), null, "Reject wrong mall");
-    const step1 = progressQueue(queue, 0, "plutomall", "p1");
+    assert.equal(progressReloginQueue(queue, 0, "lilithstore", "p1"), null, "Reject wrong mall");
+    const step1 = progressReloginQueue(queue, 0, "plutomall", "p1");
     assert.equal(step1.nextIndex, 1);
     assert.equal(step1.nextItem.mall, "lilithstore");
     assert.equal(step1.nextItem.accountId, "l1");
 
-    const step2 = progressQueue(queue, 1, "lilithstore", "l1");
+    const step2 = progressReloginQueue(queue, 1, "lilithstore", "l1");
     assert.equal(step2.finished, true);
 });
 
@@ -219,6 +212,17 @@ test("toCsv handles special characters, commas, quotes and UTF-8 BOM", () => {
     const csv = toCsv(rows);
     assert.equal(csv.startsWith("\uFEFF"), true, "Must include BOM for Excel Vietnamese display");
     assert.equal(csv.includes('"Rương ""Đặc Biệt"", vip 10"'), true, "Quotes and commas properly escaped");
+
+    const injectionRows = [
+        ["Character", "Reward"],
+        ["=1+1", "-500 Gems"],
+        ["@SUM(A1:A2)", "+100% Boost"],
+    ];
+    const sanitizedCsv = toCsv(injectionRows);
+    assert.equal(sanitizedCsv.includes("\"'=1+1\""), true, "Formula starting with = sanitized");
+    assert.equal(sanitizedCsv.includes("\"'-500 Gems\""), true, "Formula starting with - sanitized");
+    assert.equal(sanitizedCsv.includes("\"'@SUM(A1:A2)\""), true, "Formula starting with @ sanitized");
+    assert.equal(sanitizedCsv.includes("\"'+100% Boost\""), true, "Formula starting with + sanitized");
 });
 
 // --- 11. buildWebhookBody ---
@@ -338,39 +342,23 @@ test("autoCheckMode validator validates correct modes and rejects invalid values
     assert.equal(CONFIG_SETTING_VALIDATORS.autoCheckMode(123), false);
 });
 
-function simulateSyncAutoCheckAlarms({ enabled, mode, intervalMinutes, utcResetDay }) {
-    const alarms = new Map();
-    if (!enabled) {
-        alarms.delete("dailyResetCheck");
-        alarms.delete("utcResetCheck");
-        return { alarms, activeMode: "none" };
-    }
-
-    if (mode === "utcReset") {
-        alarms.delete("dailyResetCheck");
-        const periodInMinutes = (utcResetDay === "everyday" || utcResetDay === "daily") ? 24 * 60 : 7 * 24 * 60;
-        alarms.set("utcResetCheck", { periodInMinutes });
-        return { alarms, activeMode: "utcReset" };
-    } else {
-        alarms.delete("utcResetCheck");
-        alarms.set("dailyResetCheck", { periodInMinutes: intervalMinutes || 60 });
-        return { alarms, activeMode: "interval" };
-    }
-}
-
 test("syncAutoCheckAlarms enforces mutual exclusion between UTC and interval alarms", () => {
-    const disabled = simulateSyncAutoCheckAlarms({ enabled: false, mode: "utcReset" });
-    assert.equal(disabled.alarms.size, 0, "No alarms when master switch is off");
+    const disabled = getAlarmSyncPlan({ enabled: false, mode: "utcReset" });
+    assert.equal(disabled.activeMode, "none", "No alarms when master switch is off");
+    assert.equal(disabled.toCreate, null);
+    assert.deepEqual(disabled.toClear, ["dailyResetCheck", "utcResetCheck", "utcPreResetRelogin"]);
 
-    const utcMode = simulateSyncAutoCheckAlarms({ enabled: true, mode: "utcReset", utcResetDay: "5" });
-    assert.equal(utcMode.alarms.has("utcResetCheck"), true);
-    assert.equal(utcMode.alarms.has("dailyResetCheck"), false);
-    assert.equal(utcMode.alarms.get("utcResetCheck").periodInMinutes, 7 * 24 * 60);
+    const utcMode = getAlarmSyncPlan({ enabled: true, mode: "utcReset", utcResetDay: "5" });
+    assert.equal(utcMode.activeMode, "utcReset");
+    assert.equal(utcMode.toCreate.name, "utcResetCheck");
+    assert.equal(utcMode.toCreate.periodInMinutes, 7 * 24 * 60);
+    assert.deepEqual(utcMode.toClear, ["dailyResetCheck"]);
 
-    const intervalMode = simulateSyncAutoCheckAlarms({ enabled: true, mode: "interval", intervalMinutes: 120 });
-    assert.equal(intervalMode.alarms.has("dailyResetCheck"), true);
-    assert.equal(intervalMode.alarms.has("utcResetCheck"), false);
-    assert.equal(intervalMode.alarms.get("dailyResetCheck").periodInMinutes, 120);
+    const intervalMode = getAlarmSyncPlan({ enabled: true, mode: "interval", intervalMinutes: 120 });
+    assert.equal(intervalMode.activeMode, "interval");
+    assert.equal(intervalMode.toCreate.name, "dailyResetCheck");
+    assert.equal(intervalMode.toCreate.periodInMinutes, 120);
+    assert.deepEqual(intervalMode.toClear, ["utcResetCheck", "utcPreResetRelogin"]);
 });
 
 function simulateCheckAndCatchUp({ enabled, mode, now, utcResetDay, lastCheckedDate }) {
@@ -482,6 +470,14 @@ test("filterRolesForDraw filters to favorites when enabled and falls back to all
     const fallback = filterRolesForDraw(roles, [], true);
     assert.equal(fallback.filteredByFavorites, false);
     assert.equal(fallback.rolesToDraw.length, 2);
+
+    const sortedWithoutFilter = filterRolesForDraw(roles, ["2"], false);
+    assert.equal(sortedWithoutFilter.filteredByFavorites, false);
+    assert.deepEqual(sortedWithoutFilter.rolesToDraw.map(r => r.roleId), ["2", "1"], "Favorites sorted first even when drawFavoritesOnly is false");
+
+    const numRoles = [{ roleId: 10, name: "Farm" }, { roleId: 20, name: "Main" }];
+    const sortedNum = filterRolesForDraw(numRoles, ["20"], false);
+    assert.deepEqual(sortedNum.rolesToDraw.map(r => r.roleId), [20, 10], "Handles numeric roleId");
 });
 
 // --- 21. Feature #4: getCurrentWeekKey, getRewardPoints, mergeWeeklyStats ---
@@ -701,6 +697,82 @@ test("background.js defines getLanguage() and uses valid t() keys", () => {
             true,
             `Missing background.js t() key in TRANSLATIONS.vi: ${key}`
         );
+    }
+});
+
+test("manifest.json registers relogin-interceptor in MAIN world and relogin.js handles responses", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "manifest.json"), "utf8"));
+    const interceptorScript = manifest.content_scripts.find(cs => cs.js?.includes("relogin-interceptor.js"));
+    assert.ok(interceptorScript, "relogin-interceptor.js must be declared in content_scripts");
+    assert.equal(interceptorScript.world, "MAIN", "relogin-interceptor.js must run in MAIN world");
+    assert.equal(interceptorScript.run_at, "document_start", "relogin-interceptor.js must run at document_start");
+
+    const reloginJs = fs.readFileSync(path.join(__dirname, "relogin.js"), "utf8");
+    assert.ok(reloginJs.includes("ROK_PASSPORT_API_RESPONSE"), "relogin.js must listen for intercepted API responses");
+    assert.ok(reloginJs.includes("waitForLoginResult"), "relogin.js must use waitForLoginResult");
+});
+
+test("notification toast system is defined in popup and has zero emoji in notification strings", () => {
+    const popupHtml = fs.readFileSync(path.join(__dirname, "popup.html"), "utf8");
+    assert.ok(popupHtml.includes('id="toastContainer"'), "popup.html must contain toastContainer");
+    assert.ok(popupHtml.includes('id="toastCard"'), "popup.html must contain toastCard");
+    assert.ok(popupHtml.includes('id="toastCloseBtn"'), "popup.html must contain toastCloseBtn");
+
+    const popupJs = fs.readFileSync(path.join(__dirname, "popup.js"), "utf8");
+    assert.ok(popupJs.includes("function showToast("), "popup.js must define showToast");
+    assert.ok(popupJs.includes("function hideToast("), "popup.js must define hideToast");
+
+    const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
+    for (const [lang, dict] of Object.entries(TRANSLATIONS)) {
+        for (const [key, text] of Object.entries(dict)) {
+            if (key.startsWith("notify") || key.endsWith("NotificationTitle")) {
+                assert.equal(
+                    emojiRegex.test(text),
+                    false,
+                    `Notification string ${lang}.${key} must NOT contain emoji: "${text}"`
+                );
+            }
+        }
+    }
+});
+
+test("confirm delete modal is defined in popup with styling and zero emoji", () => {
+    const popupHtml = fs.readFileSync(path.join(__dirname, "popup.html"), "utf8");
+    assert.ok(popupHtml.includes('id="confirmModal"'), "popup.html must contain confirmModal");
+    assert.ok(popupHtml.includes('id="confirmModalTitle"'), "popup.html must contain confirmModalTitle");
+    assert.ok(popupHtml.includes('id="confirmModalMessage"'), "popup.html must contain confirmModalMessage");
+    assert.ok(popupHtml.includes('id="confirmModalCancelBtn"'), "popup.html must contain confirmModalCancelBtn");
+    assert.ok(popupHtml.includes('id="confirmModalConfirmBtn"'), "popup.html must contain confirmModalConfirmBtn");
+
+    const popupCss = fs.readFileSync(path.join(__dirname, "popup.css"), "utf8");
+    assert.ok(popupCss.includes(".modal-backdrop"), "popup.css must define .modal-backdrop");
+    assert.ok(popupCss.includes(".modal-backdrop[hidden]"), "popup.css must define .modal-backdrop[hidden]");
+    assert.ok(popupCss.includes(".btn-destructive"), "popup.css must define .btn-destructive");
+
+    const popupJs = fs.readFileSync(path.join(__dirname, "popup.js"), "utf8");
+    assert.ok(popupJs.includes("function showConfirmModal("), "popup.js must define showConfirmModal");
+    assert.ok(popupJs.includes("function closeConfirmModal("), "popup.js must define closeConfirmModal");
+    assert.equal(popupJs.includes("confirm("), false, "popup.js must not contain any native confirm() calls");
+
+    const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
+    const requiredModalKeys = [
+        "confirmDeleteTitle",
+        "confirmDeleteAccount",
+        "confirmClearAccountsTitle",
+        "confirmClearRewardsTitle",
+        "modalCancelBtn",
+        "modalDeleteBtn",
+    ];
+    for (const lang of ["en", "vi"]) {
+        const dict = TRANSLATIONS[lang];
+        for (const key of requiredModalKeys) {
+            assert.ok(dict[key], `Missing modal translation key: ${lang}.${key}`);
+            assert.equal(
+                emojiRegex.test(dict[key]),
+                false,
+                `Modal translation ${lang}.${key} must NOT contain emoji: "${dict[key]}"`
+            );
+        }
     }
 });
 
