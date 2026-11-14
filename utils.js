@@ -1179,11 +1179,17 @@ function normalizeSearchText(str) {
         .replace(/Đ/g, "D");
 }
 
-function matchesSearch(role, rawQuery) {
-    const q = rawQuery.trim().toLowerCase();
-    if (!q) return true;
+function parseSearchQuery(rawQuery) {
+    const q = String(rawQuery ?? "").trim().toLowerCase();
+    if (!q) return null;
     const qClean = q.replace(/^#/, "");
-    const qNorm = normalizeSearchText(qClean);
+    return { q, qClean, qNorm: normalizeSearchText(qClean) };
+}
+
+function matchesSearch(role, rawQuery, parsedQuery) {
+    const parsed = parsedQuery || parseSearchQuery(rawQuery);
+    if (!parsed) return true;
+    const { q, qClean, qNorm } = parsed;
     const name = String(role?.name ?? "").toLowerCase();
     const id = String(role?.roleId ?? "").toLowerCase();
     const svr = String(role?.svrId ?? "").toLowerCase();
@@ -1508,7 +1514,7 @@ if (typeof module !== "undefined") {
         parseJwtPayload, getJwtExp, isJwtExpired, isJwtExpiringSoon, isExpiredTokenResponse, parseWebhookUrls, buildWebhookBody,
         getRewardIcons, buildSingleDiscordRewardEmbed, getRoleDrawCount,
         getNextUtcResetTime, getPreResetReloginTime, getCurrentWeekKey, getTodayUtcDateString, isUtcResetMissed,
-        normalizeSearchText, matchesSearch, toCsv, escapeCsvCell,
+        normalizeSearchText, parseSearchQuery, matchesSearch, toCsv, escapeCsvCell,
         stripStoreAccountsPasswords, mergeRewardTotals, REWARD_POINTS, getRewardPoints,
         filterRolesForDraw, progressReloginQueue, getAlarmSyncPlan, mergeWeeklyStats, encryptJsonWithPassphrase, decryptJsonWithPassphrase,
         buildExportSettings, CONFIG_SETTING_VALIDATORS, POPUP_TABS, normalizePopupTab,

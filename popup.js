@@ -662,7 +662,7 @@ if (clearCharSearchBtn) {
     });
 }
 
-async function renderChars(roles, mall, accountId = getSelectedAccountId(), viewVersion = accountViewVersion) {
+async function renderChars(roles, mall, accountId = getSelectedAccountId(), viewVersion = accountViewVersion, preloadedFavorites = null) {
     cachedRoles = Array.isArray(roles) ? roles : [];
     cachedMall = mall;
     cachedAccountId = accountId;
@@ -670,14 +670,16 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
     const favoritesKey = accountStorageKey(mall, accountId, "favoriteRoleIds");
     let favoriteOrder;
     try {
-        const savedFavorites = await chrome.storage.local.get(favoritesKey);
-        if (
-            renderVersion !== charRenderVersion ||
-            !isCurrentAccountView(mall, accountId, viewVersion)
-        ) return;
-        favoriteOrder = Array.isArray(savedFavorites[favoritesKey])
-            ? savedFavorites[favoritesKey].map(String)
-            : [];
+        let rawFavorites = preloadedFavorites;
+        if (rawFavorites === null) {
+            const savedFavorites = await chrome.storage.local.get(favoritesKey);
+            if (
+                renderVersion !== charRenderVersion ||
+                !isCurrentAccountView(mall, accountId, viewVersion)
+            ) return;
+            rawFavorites = savedFavorites[favoritesKey];
+        }
+        favoriteOrder = Array.isArray(rawFavorites) ? rawFavorites.map(String) : [];
     } catch (error) {
         if (
             renderVersion !== charRenderVersion ||
@@ -700,9 +702,9 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
         ...roles.filter(role => !favoritePositions.has(String(role.roleId ?? "")))
     ];
 
-    const searchVal = charSearchInput?.value.trim() || "";
-    const displayRoles = searchVal
-        ? sortedRoles.filter(role => matchesSearch(role, searchVal))
+    const parsedQuery = parseSearchQuery(charSearchInput?.value);
+    const displayRoles = parsedQuery
+        ? sortedRoles.filter(role => matchesSearch(role, null, parsedQuery))
         : sortedRoles;
 
     if (displayRoles.length === 0) {
@@ -714,6 +716,7 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
         return;
     }
 
+    const fragment = document.createDocumentFragment();
     for (const role of displayRoles) {
         const roleId = String(role.roleId ?? "");
         const roleName = String(role.name ?? tr("unknownName"));
@@ -818,8 +821,9 @@ async function renderChars(roles, mall, accountId = getSelectedAccountId(), view
         const server = document.createElement("span");
         server.textContent = `#${role.svrId ?? "?"}`;
         div.append(avatarWrap, nameWrap, favoriteButton, copyButton, server);
-        charList.appendChild(div);
+        fragment.appendChild(div);
     }
+    charList.appendChild(fragment);
 }
 
 function renderDrawsLeft(drawsLeft) {
@@ -842,31 +846,30 @@ async function renderCache(mall) {
         if (!isCurrentAccountView(mall, accountId, viewVersion)) return;
         if (res?.error) throw new Error(res.error);
         const drawLogKey = accountStorageKey(mall, accountId, "drawLog");
-        const { [drawLogKey]: drawLog } = await chrome.storage.local.get(drawLogKey);
+        const tokenKey = accountStorageKey(mall, accountId, "token");
+        const isDrawingKey = accountStorageKey(mall, accountId, "isDrawing");
+        const favoritesKey = accountStorageKey(mall, accountId, "favoriteRoleIds");
+        const storeData = await chrome.storage.local.get([drawLogKey, tokenKey, isDrawingKey, favoritesKey]);
         if (!isCurrentAccountView(mall, accountId, viewVersion)) return;
+
+        const drawLog = storeData[drawLogKey];
+        renderDrawLog(drawLog);
         if (!res?.hasToken) {
             setStatus(tr("noToken"), null);
             setCharsEmpty(tr("noDataCapturePrompt"));
             tokenBox.value = "";
             totalDrawsEl.textContent = tr("drawsRemainingPlaceholder");
-            renderDrawLog(drawLog);
             return;
         }
 
-        const tokenKey = accountStorageKey(mall, accountId, "token");
-        const { [tokenKey]: token } = await chrome.storage.local.get(tokenKey);
-        if (!isCurrentAccountView(mall, accountId, viewVersion)) return;
-
+        const token = storeData[tokenKey];
         const tokenEval = evaluateTokenStatus(token, res.isValidToken);
         setStatus(tokenEval.text, tokenEval.state);
         tokenBox.value = token || "";
 
         renderDrawsLeft(res.drawsLeft);
 
-        renderDrawLog(drawLog);
-
-        const isDrawingKey = accountStorageKey(mall, accountId, "isDrawing");
-        const { [isDrawingKey]: isDrawing } = await chrome.storage.local.get(isDrawingKey);
+        const isDrawing = storeData[isDrawingKey];
         const drawBtn = document.getElementById("drawNowBtn");
         if (drawBtn) {
             drawBtn.disabled = !!isDrawing;
@@ -874,7 +877,7 @@ async function renderCache(mall) {
         }
 
         if (res.roles?.length > 0) {
-            await renderChars(res.roles, mall, accountId, viewVersion);
+            await renderChars(res.roles, mall, accountId, viewVersion, storeData[favoritesKey] ?? []);
         } else {
             cachedRoles = [];
             setCharsEmpty(tr("clickRefreshToLoadChars"));
@@ -924,13 +927,16 @@ async function fetchAndRender(mall) {
             }
 
             const tokenKey = accountStorageKey(m, accountId, "token");
+            const favoritesKey = accountStorageKey(m, accountId, "favoriteRoleIds");
+            let favoritesData = null;
             try {
-                const data = await chrome.storage.local.get(tokenKey);
+                const data = await chrome.storage.local.get([tokenKey, favoritesKey]);
                 if (!isCurrentAccountView(m, accountId, viewVersion)) {
                     resolve(null);
                     return;
                 }
                 tokenBox.value = data[tokenKey] || "";
+                favoritesData = data[favoritesKey] ?? [];
             } catch (error) {
                 if (!isCurrentAccountView(m, accountId, viewVersion)) {
                     resolve(null);
@@ -947,7 +953,7 @@ async function fetchAndRender(mall) {
 
             const roles = Array.isArray(res.roles) ? res.roles : [];
             if (roles.length > 0) {
-                await renderChars(roles, m, accountId, viewVersion);
+                await renderChars(roles, m, accountId, viewVersion, favoritesData);
             } else {
                 cachedRoles = [];
                 setCharsEmpty(tr("noCharsFound"));
@@ -2395,6 +2401,7 @@ async function renderRewardTotals() {
             : tr("noRewardsAllTime");
         container.appendChild(empty);
     } else {
+        const fragment = document.createDocumentFragment();
         for (const [name, count] of entries) {
             const row = document.createElement("div");
             row.className = "reward-total-item";
@@ -2405,8 +2412,9 @@ async function renderRewardTotals() {
             nameEl.className = "reward-total-name";
             nameEl.textContent = name;
             row.append(countEl, nameEl);
-            container.appendChild(row);
+            fragment.appendChild(row);
         }
+        container.appendChild(fragment);
     }
 
     if (mode === "weekly" && leaderboardList) {
@@ -2422,6 +2430,7 @@ async function renderRewardTotals() {
             empty.textContent = tr("noLeaderboardData");
             leaderboardList.appendChild(empty);
         } else {
+            const fragment = document.createDocumentFragment();
             ranked.forEach((charEntry, index) => {
                 const row = document.createElement("div");
                 row.className = "leaderboard-item";
@@ -2454,8 +2463,9 @@ async function renderRewardTotals() {
                 scoreEl.textContent = tr("pointsSuffix", { score: Number(charEntry.score).toLocaleString(getLocaleTag()) });
 
                 row.append(rankEl, infoEl, scoreEl);
-                leaderboardList.appendChild(row);
+                fragment.appendChild(row);
             });
+            leaderboardList.appendChild(fragment);
         }
     }
 }

@@ -20,6 +20,7 @@ const {
     getTodayUtcDateString,
     isUtcResetMissed,
     normalizeSearchText,
+    parseSearchQuery,
     matchesSearch,
     toCsv,
     escapeCsvCell,
@@ -119,7 +120,7 @@ test("getRoleDrawCount extracts draw count from nested manifest using STORE_CONF
 });
 
 // --- 6. normalizeSearchText & matchesSearch ---
-test("matchesSearch handles Vietnamese names and server IDs", () => {
+test("matchesSearch and parseSearchQuery handle Vietnamese names and server IDs", () => {
     const role = { name: "Chiến Thần Độc Cô", roleId: "12345678", svrId: "1055" };
     assert.equal(matchesSearch(role, "chien"), true, "Diacritics insensitive");
     assert.equal(matchesSearch(role, "doc co"), true, "d vs đ match");
@@ -127,6 +128,13 @@ test("matchesSearch handles Vietnamese names and server IDs", () => {
     assert.equal(matchesSearch(role, "#1055"), true, "Server ID match with # prefix");
     assert.equal(matchesSearch(role, "  #1055  "), true, "Trimmed # prefix match");
     assert.equal(matchesSearch(role, "9999"), false, "Non-matching query");
+
+    // Pre-parsed query optimization
+    const parsed = parseSearchQuery("  #1055  ");
+    assert.deepEqual(parsed, { q: "#1055", qClean: "1055", qNorm: "1055" });
+    assert.equal(matchesSearch(role, "  #1055  ", parsed), true, "Matches with precomputed query");
+    assert.equal(parseSearchQuery("   "), null, "Empty query returns null");
+    assert.equal(matchesSearch(role, "", null), true, "Empty parsed query matches all");
 });
 
 // --- 7. Multi-mall relogin queue progression ---
