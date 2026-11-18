@@ -13,6 +13,8 @@ const {
     isExpiredTokenResponse,
     parseWebhookUrls,
     buildWebhookBody,
+    getWebhookPhotoEndpoint,
+    buildDiscordImagePayload,
     getRewardIcons,
     buildSingleDiscordRewardEmbed,
     getRoleDrawCount,
@@ -25,6 +27,7 @@ const {
     toCsv,
     escapeCsvCell,
     stripStoreAccountsPasswords,
+    hasValidCredentials,
     mergeRewardTotals,
     buildExportSettings,
     CONFIG_SETTING_VALIDATORS,
@@ -34,6 +37,9 @@ const {
     getCurrentWeekKey,
     getRewardPoints,
     mergeWeeklyStats,
+    getTopCharacterRewards,
+    getRankedCharacterScores,
+    getInitials,
     isJwtExpiringSoon,
     getPreResetReloginTime,
     encryptJsonWithPassphrase,
@@ -45,6 +51,7 @@ const {
     normalizeLanguage,
     REWARDS_BY_ID,
     getRewardNameById,
+    getRewardIdByName,
     translateRewardName,
     normalizeTranslatedRewards,
     TRANSLATIONS,
@@ -251,6 +258,14 @@ test("buildWebhookBody shapes Discord and Telegram payloads correctly", () => {
 
     const gPayload = buildWebhookBody(genericUrl, "Hello Slack", customEmbedPayload);
     assert.deepEqual(gPayload, { text: "Hello Slack", content: "Hello Slack" });
+
+    assert.equal(getWebhookPhotoEndpoint("https://api.telegram.org/bot123/sendMessage?chat_id=456"), "https://api.telegram.org/bot123/sendPhoto?chat_id=456");
+    assert.equal(getWebhookPhotoEndpoint("https://discord.com/api/webhooks/123"), "https://discord.com/api/webhooks/123");
+    assert.equal(getWebhookPhotoEndpoint(""), "");
+
+    const imgPayload = buildDiscordImagePayload("Podium Title", "Week: 2026-11-14");
+    assert.equal(imgPayload.embeds[0].title, "Podium Title");
+    assert.equal(imgPayload.embeds[0].image.url, "attachment://leaderboard.png");
 });
 
 // --- 12. CONFIG_SETTING_VALIDATORS ---
@@ -264,6 +279,10 @@ test("validators correctly check settings", () => {
     assert.equal(CONFIG_SETTING_VALIDATORS.telegramWebhookEnabled(false), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.telegramWebhookUrl("https://api.telegram.org/bot123/sendMessage"), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.telegramWebhookUrl(null), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoLeaderboardWebhookEnabled(true), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoLeaderboardDiscord(false), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoLeaderboardTelegram(true), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.autoLeaderboardTelegram("yes"), false);
     assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals({ "200 Đá Quý": 5 }), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals([1, 2, 3]), false);
 });
@@ -513,15 +532,33 @@ test("getRewardPoints and mergeWeeklyStats accumulate scores and roll over on ne
     const oldStats = { weekKey: "2026-10-23", rewardTotals: { "200 Đá Quý": 5 }, characterScores: {} };
     const nextStats = mergeWeeklyStats(oldStats, "2026-10-30", "plutomall", [
         {
-            role: { roleId: "101", name: "SunTzu", svrId: "1001" },
-            rewards: { "2.000 Đá Quý": 1, "Tăng tốc 3 giờ": 2 }
+            role: { roleId: "101", name: "SunTzu", svrId: "1001", avatar: "https://avatar.example.com/101.png" },
+            rewards: { "2.000 Đá Quý": 1, "Tăng tốc 3 giờ": 2, "200 Đá Quý": 3 }
         }
     ]);
     assert.equal(nextStats.weekKey, "2026-10-30");
-    assert.equal(nextStats.rewardTotals["200 Đá Quý"], undefined, "Old week must be discarded");
+    assert.equal(nextStats.rewardTotals["200 Đá Quý"], 3, "Old week discarded, new week kept");
     assert.equal(nextStats.rewardTotals["2.000 Đá Quý"], 1);
-    assert.equal(nextStats.characterScores["plutomall:101"].score, 2600);
-    assert.equal(nextStats.characterScores["plutomall:101"].draws, 3);
+    assert.equal(nextStats.characterScores["plutomall:101"].score, 3200);
+    assert.equal(nextStats.characterScores["plutomall:101"].draws, 6);
+    assert.equal(nextStats.characterScores["plutomall:101"].avatar, "https://avatar.example.com/101.png");
+
+    // Test getTopCharacterRewards
+    const topRewards = getTopCharacterRewards(nextStats.characterScores["plutomall:101"].rewards, 2);
+    assert.equal(topRewards.length, 2);
+    assert.equal(topRewards[0].name, "2.000 Đá Quý");
+    assert.equal(topRewards[0].points, 2000);
+    assert.equal(topRewards[1].name, "Tăng tốc 3 giờ");
+    assert.equal(topRewards[1].points, 300);
+
+    // Test getRankedCharacterScores & getInitials
+    const ranked = getRankedCharacterScores(nextStats.characterScores);
+    assert.equal(ranked.length, 1);
+    assert.equal(ranked[0].name, "SunTzu");
+    assert.equal(ranked[0].score, 3200);
+    assert.equal(getInitials("Sun Tzu"), "ST");
+    assert.equal(getInitials("Cao Cao The Great"), "CC");
+    assert.equal(getInitials(""), "?");
 });
 
 // --- 22. Feature #5: isJwtExpiringSoon & getPreResetReloginTime ---
@@ -601,6 +638,15 @@ test("translateRewardName, normalizeTranslatedRewards, and getRewardPoints handl
     assert.equal(getRewardNameById("1986632021321089024", "en"), "200 Gems");
     assert.equal(getRewardNameById("1986632021321089024", "vi"), "200 Đá Quý");
     assert.equal(getRewardNameById("nonexistent", "en"), null);
+
+    assert.equal(getRewardIdByName("200 Gems"), "1986632021321089024");
+    assert.equal(getRewardIdByName("200 Đá Quý"), "1986632021321089024");
+    assert.equal(getRewardIdByName("2,000 Gems"), "1986631205541543936");
+    assert.equal(getRewardIdByName("2.000 Đá Quý"), "1986631205541543936");
+    assert.equal(getRewardIdByName("Equipment Material Choice Chest"), "1986631555921117184");
+    assert.equal(getRewardIdByName("Rương Tự Chọn Vật Liệu Trang Bị"), "1986631555921117184");
+    assert.equal(getRewardIdByName("Unknown"), null);
+    assert.equal(getRewardIdByName(null), null);
 
     assert.equal(translateRewardName("200 Đá Quý", "en"), "200 Gems");
     assert.equal(translateRewardName("200 Gems", "vi"), "200 Đá Quý");
@@ -783,6 +829,70 @@ test("confirm delete modal is defined in popup with styling and zero emoji", () 
         }
     }
 });
+
+test("Get Token button performs manual account relogin with loading state and credential guard", () => {
+    // 1. Pure validation helper
+    assert.equal(hasValidCredentials({ username: "player1", password: "pwd" }), true);
+    assert.equal(hasValidCredentials({ username: "  ", password: "pwd" }), false);
+    assert.equal(hasValidCredentials({ username: "player1", password: "" }), false);
+    assert.equal(hasValidCredentials(null), false);
+    assert.equal(hasValidCredentials({}), false);
+
+    // 2. popup.html markup checks
+    const popupHtml = fs.readFileSync(path.join(__dirname, "popup.html"), "utf8");
+    assert.ok(popupHtml.includes('id="captureBtn"'), "popup.html must contain #captureBtn");
+    assert.ok(
+        popupHtml.includes('title="Log in and get token for selected account"'),
+        "popup.html #captureBtn must have updated title"
+    );
+    assert.ok(popupHtml.includes('data-i18n-title="captureBtnTitle"'), "#captureBtn must use captureBtnTitle i18n");
+
+    // 3. popup.css loading styles
+    const popupCss = fs.readFileSync(path.join(__dirname, "popup.css"), "utf8");
+    assert.ok(popupCss.includes(".btn-icon-util.is-loading"), "popup.css must define .btn-icon-util.is-loading");
+    assert.ok(popupCss.includes("@keyframes spin"), "popup.css must define @keyframes spin");
+
+    // 4. popup.js logic checks
+    const popupJs = fs.readFileSync(path.join(__dirname, "popup.js"), "utf8");
+    assert.ok(popupJs.includes("function setCaptureBtnLoading("), "popup.js must define setCaptureBtnLoading");
+    assert.ok(popupJs.includes("function syncCaptureBtnLoadingState("), "popup.js must define syncCaptureBtnLoadingState");
+    assert.ok(
+        popupJs.includes('testRelogin(mall, accountId, { fromHeader: true })'),
+        "captureBtn click handler must delegate to testRelogin with fromHeader: true"
+    );
+    assert.ok(
+        popupJs.includes('selectPopupTab("automation")'),
+        "popup.js must switch to automation tab when credentials missing"
+    );
+
+    // 5. background.js manual bypass checks
+    const bgJs = fs.readFileSync(path.join(__dirname, "background.js"), "utf8");
+    assert.ok(
+        bgJs.includes('"autoReloginIsManual"'),
+        "background.js must track autoReloginIsManual in RELOGIN_SESSION_KEYS"
+    );
+    assert.ok(
+        bgJs.includes("async function openReloginWindow(mall, accountId, isManual = false)"),
+        "openReloginWindow must accept isManual flag"
+    );
+    assert.ok(
+        bgJs.includes("openReloginWindow(msg.mall, msg.accountId, true)"),
+        "testRelogin message must pass isManual=true to openReloginWindow"
+    );
+
+    // 6. Translations check
+    assert.equal(
+        TRANSLATIONS.en.captureBtnTitle,
+        "Log in and get token for selected account"
+    );
+    assert.equal(
+        TRANSLATIONS.vi.captureBtnTitle,
+        "Đăng nhập và lấy Token cho tài khoản đã chọn"
+    );
+    assert.equal(TRANSLATIONS.en.gettingToken, "Logging in...");
+    assert.equal(TRANSLATIONS.vi.gettingToken, "Đang đăng nhập...");
+});
+
 
 
 

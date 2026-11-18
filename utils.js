@@ -23,6 +23,21 @@ for (const entry of Object.values(REWARDS_BY_ID)) {
     REWARD_NAME_TO_ENTRY[entry.vi] = entry;
 }
 
+function getRewardIdByName(name) {
+    const str = String(name ?? "").trim();
+    if (!str) return null;
+    const entry = REWARD_NAME_TO_ENTRY[str];
+    if (entry) {
+        for (const [id, e] of Object.entries(REWARDS_BY_ID)) {
+            if (e === entry || e.en === entry.en) return id;
+        }
+    }
+    for (const [id, e] of Object.entries(REWARDS_BY_ID)) {
+        if (e.en.toLowerCase() === str.toLowerCase() || e.vi.toLowerCase() === str.toLowerCase()) return id;
+    }
+    return null;
+}
+
 function getRewardNameById(rewardId, lang = DEFAULT_LANGUAGE) {
     const entry = REWARDS_BY_ID[String(rewardId ?? "")];
     if (!entry) return null;
@@ -62,8 +77,9 @@ const TRANSLATIONS = {
         switchLangTitle: "Switch language to Tiếng Việt",
         accountLabel: "Account",
         activeAccountAria: "Selected account",
-        captureBtnTitle: "Open store to capture token",
+        captureBtnTitle: "Log in and get token for selected account",
         captureBtn: "Get Token",
+        gettingToken: "Logging in...",
         refreshCharsTitle: "Refresh character list",
         refreshCharsAria: "Refresh",
         navDraw: "Draw",
@@ -155,6 +171,24 @@ const TRANSLATIONS = {
         noRewardsAllTime: "No reward statistics yet.",
         leaderboardTitle: "Weekly Luck Leaderboard",
         leaderboardMeta: "Resets Friday 00:05 UTC",
+        shareLeaderboardTitle: "Share Leaderboard",
+        shareBtn: "Share",
+        shareModalTitle: "Weekly Luck Leaderboard",
+        copyImageBtn: "Copy Image",
+        downloadImageBtn: "Download PNG",
+        sendWebhookImageBtn: "Send to Webhook",
+        autoSendWebhooksToggle: "Auto-send to Webhooks",
+        autoSendWebhooksDesc: "Send podium card every Friday at 00:05 UTC reset",
+        channelDiscord: "Discord",
+        channelTelegram: "Telegram",
+        imageCopied: "Leaderboard image copied to clipboard!",
+        imageCopyFailed: "Could not copy image: {error}",
+        webhookImageSent: "Leaderboard image sent to {count} webhook(s)!",
+        webhookImageFailed: "Failed to send image: {error}",
+        noWebhooksConfigured: "No webhooks configured. Please configure in the Automation tab.",
+        top3Podium: "Top 3 Podium",
+        runnersUp: "Runners-up",
+        exportSuccess: "Leaderboard PNG downloaded successfully!",
         noLeaderboardData: "No luck data for this week yet.",
         pointsSuffix: "{score} pts",
         clearRewardsBtn: "Clear stats",
@@ -474,8 +508,9 @@ const TRANSLATIONS = {
         switchLangTitle: "Switch language to English",
         accountLabel: "Tài khoản",
         activeAccountAria: "Tài khoản đang chọn",
-        captureBtnTitle: "Mở cửa hàng để lấy Token",
+        captureBtnTitle: "Đăng nhập và lấy Token cho tài khoản đã chọn",
         captureBtn: "Lấy Token",
+        gettingToken: "Đang đăng nhập...",
         refreshCharsTitle: "Làm mới danh sách nhân vật",
         refreshCharsAria: "Làm mới",
         navDraw: "Quay thưởng",
@@ -567,6 +602,24 @@ const TRANSLATIONS = {
         noRewardsAllTime: "Chưa có thống kê phần thưởng nào.",
         leaderboardTitle: "Bảng xếp hạng nhân phẩm tuần",
         leaderboardMeta: "Reset Thứ Sáu 00:05 UTC",
+        shareLeaderboardTitle: "Chia sẻ Bảng xếp hạng",
+        shareBtn: "Chia sẻ",
+        shareModalTitle: "Bảng Xếp Hạng May Mắn Tuần",
+        copyImageBtn: "Sao chép ảnh",
+        downloadImageBtn: "Tải ảnh PNG",
+        sendWebhookImageBtn: "Gửi Webhook",
+        autoSendWebhooksToggle: "Tự động gửi Webhook",
+        autoSendWebhooksDesc: "Gửi ảnh bảng xếp hạng mỗi Thứ Sáu lúc 00:05 UTC",
+        channelDiscord: "Discord",
+        channelTelegram: "Telegram",
+        imageCopied: "Đã sao chép ảnh bảng xếp hạng vào khay nhớ tạm!",
+        imageCopyFailed: "Không thể sao chép ảnh: {error}",
+        webhookImageSent: "Đã gửi ảnh bảng xếp hạng đến {count} webhook!",
+        webhookImageFailed: "Gửi ảnh thất bại: {error}",
+        noWebhooksConfigured: "Chưa cấu hình webhook. Vui lòng cấu hình ở tab Tự động.",
+        top3Podium: "Top 3 Vinh Danh",
+        runnersUp: "Xếp Hạng Tiếp Theo",
+        exportSuccess: "Đã tải xuống ảnh bảng xếp hạng PNG thành công!",
         noLeaderboardData: "Chưa có dữ liệu nhân phẩm tuần này.",
         pointsSuffix: "{score} đ",
         clearRewardsBtn: "Xóa thống kê",
@@ -987,6 +1040,27 @@ function buildWebhookBody(webhookUrl, text, discordPayload = null) {
     return { text, content: text };
 }
 
+function getWebhookPhotoEndpoint(webhookUrl) {
+    if (!webhookUrl || typeof webhookUrl !== "string") return "";
+    if (webhookUrl.includes("api.telegram.org/bot")) {
+        return webhookUrl.replace("/sendMessage", "/sendPhoto");
+    }
+    return webhookUrl;
+}
+
+function buildDiscordImagePayload(title, caption) {
+    return {
+        content: `**${title}**`,
+        embeds: [{
+            title: title,
+            description: caption,
+            color: 16757578,
+            image: { url: "attachment://leaderboard.png" },
+            footer: { text: "ROK Weekly Auto" }
+        }]
+    };
+}
+
 function getRewardIcons(manifest) {
     const icons = {};
     const visited = new WeakSet();
@@ -1213,6 +1287,16 @@ function toCsv(rows) {
         .join("\r\n");
 }
 
+function hasValidCredentials(account) {
+    return Boolean(
+        account &&
+        typeof account.username === "string" &&
+        account.username.trim() !== "" &&
+        typeof account.password === "string" &&
+        account.password !== ""
+    );
+}
+
 function stripStoreAccountsPasswords(storeAccounts) {
     if (!storeAccounts || typeof storeAccounts !== "object") return storeAccounts;
     const stripped = {};
@@ -1321,6 +1405,7 @@ function mergeWeeklyStats(existingWeeklyStats, weekKey, mall, roleRewardsEntries
             name: role.name || String(role.roleId),
             roleId: String(role.roleId),
             svrId: String(role.svrId || ""),
+            avatar: role.avatar || "",
             mall,
             score: 0,
             draws: 0,
@@ -1343,6 +1428,7 @@ function mergeWeeklyStats(existingWeeklyStats, weekKey, mall, roleRewardsEntries
             ...prev,
             name: role.name || prev.name,
             svrId: String(role.svrId || prev.svrId || ""),
+            avatar: role.avatar || prev.avatar || "",
             score: (prev.score || 0) + addedScore,
             draws: (prev.draws || 0) + addedDraws,
             rewards: mergedCharRewards,
@@ -1350,6 +1436,36 @@ function mergeWeeklyStats(existingWeeklyStats, weekKey, mall, roleRewardsEntries
     }
 
     return { weekKey, rewardTotals, characterScores };
+}
+
+function getTopCharacterRewards(rewardsObj, limit = 3) {
+    if (!rewardsObj || typeof rewardsObj !== "object") return [];
+    return Object.entries(rewardsObj)
+        .map(([name, count]) => ({
+            name,
+            count: Number(count) || 1,
+            points: getRewardPoints(name),
+        }))
+        .filter(item => item.count > 0)
+        .sort((a, b) => (b.points - a.points) || (b.count - a.count))
+        .slice(0, limit);
+}
+
+function getRankedCharacterScores(characterScores) {
+    if (!characterScores || typeof characterScores !== "object") return [];
+    return Object.values(characterScores)
+        .filter(item => item && item.score > 0)
+        .sort((a, b) => (b.score - a.score) || ((b.draws || 0) - (a.draws || 0)));
+}
+
+function getInitials(name) {
+    return String(name ?? "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0]?.toLocaleUpperCase() || "")
+        .join("") || "?";
 }
 
 function bytesToBase64(bytes) {
@@ -1457,6 +1573,9 @@ const CONFIG_SETTING_VALIDATORS = {
     discordWebhookUrl: value => typeof value === "string",
     telegramWebhookEnabled: value => typeof value === "boolean",
     telegramWebhookUrl: value => typeof value === "string",
+    autoLeaderboardWebhookEnabled: value => typeof value === "boolean",
+    autoLeaderboardDiscord: value => typeof value === "boolean",
+    autoLeaderboardTelegram: value => typeof value === "boolean",
     rewardTotals: value => Boolean(value && typeof value === "object" && !Array.isArray(value)),
     weeklyStats: value => Boolean(
         value && typeof value === "object" && !Array.isArray(value) &&
@@ -1512,14 +1631,15 @@ if (typeof module !== "undefined") {
     module.exports = {
         STORE_CONFIG, STORE_NAMES, isReloginStoreUrl, accountStorageKey,
         parseJwtPayload, getJwtExp, isJwtExpired, isJwtExpiringSoon, isExpiredTokenResponse, parseWebhookUrls, buildWebhookBody,
+        getWebhookPhotoEndpoint, buildDiscordImagePayload,
         getRewardIcons, buildSingleDiscordRewardEmbed, getRoleDrawCount,
         getNextUtcResetTime, getPreResetReloginTime, getCurrentWeekKey, getTodayUtcDateString, isUtcResetMissed,
         normalizeSearchText, parseSearchQuery, matchesSearch, toCsv, escapeCsvCell,
-        stripStoreAccountsPasswords, mergeRewardTotals, REWARD_POINTS, getRewardPoints,
-        filterRolesForDraw, progressReloginQueue, getAlarmSyncPlan, mergeWeeklyStats, encryptJsonWithPassphrase, decryptJsonWithPassphrase,
+        stripStoreAccountsPasswords, hasValidCredentials, mergeRewardTotals, REWARD_POINTS, getRewardPoints,
+        filterRolesForDraw, progressReloginQueue, getAlarmSyncPlan, mergeWeeklyStats, getTopCharacterRewards, getRankedCharacterScores, getInitials, encryptJsonWithPassphrase, decryptJsonWithPassphrase,
         buildExportSettings, CONFIG_SETTING_VALIDATORS, POPUP_TABS, normalizePopupTab,
         SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, normalizeLanguage,
-        REWARDS_BY_ID, getRewardNameById, translateRewardName, normalizeTranslatedRewards,
+        REWARDS_BY_ID, getRewardNameById, getRewardIdByName, translateRewardName, normalizeTranslatedRewards,
         TRANSLATIONS, t,
     };
 }

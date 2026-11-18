@@ -75,6 +75,12 @@ const SVG_ICONS = {
     starOutline: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="8 1.5 10.2 5.8 15 6.5 11.5 9.9 12.3 14.5 8 12.2 3.7 14.5 4.5 9.9 1 6.5 5.8 5.8 8 1.5" /></svg>`,
     arrowLeft: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12.5" y1="8" x2="3.5" y2="8" /><polyline points="7.5 12 3.5 8 7.5 4" /></svg>`,
     close: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="4" x2="4" y2="12" /><line x1="4" y1="4" x2="12" y2="12" /></svg>`,
+    crown: `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M2.5 12h11v1.5h-11zM14 4l-3 3-3-4.5L5 7 2 4l1 7h10z"/></svg>`,
+    medal: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="10" r="4.5"/><path d="M5.5 2l2.5 4 2.5-4M4 2h8"/></svg>`,
+    gem: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="8 1.5 14.5 5.5 8 14.5 1.5 5.5 8 1.5"/><line x1="1.5" y1="5.5" x2="14.5" y2="5.5"/></svg>`,
+    clock: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"/><polyline points="8 4.5 8 8 10.5 9.5"/></svg>`,
+    chest: `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="12" height="8" rx="1.5"/><line x1="2" y1="8" x2="14" y2="8"/></svg>`,
+    star: `<svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="8 1.5 10.2 5.8 15 6.5 11.5 9.9 12.3 14.5 8 12.2 3.7 14.5 4.5 9.9 1 6.5 5.8 5.8 8 1.5" /></svg>`,
 };
 
 let currentThemeSetting = "system";
@@ -126,6 +132,11 @@ function applyLanguage(lang, rerenderDynamic = true) {
     }
 
     applyStaticDomTranslations();
+    const activeCaptureBtn = document.getElementById("captureBtn");
+    if (activeCaptureBtn && activeCaptureBtn.classList.contains("is-loading")) {
+        const span = activeCaptureBtn.querySelector("span");
+        if (span) span.textContent = tr("gettingToken");
+    }
     applyTheme(currentThemeSetting);
     updateSwitchToggleLabels();
     if (typeof updateConfigSelectionButton === "function") {
@@ -256,6 +267,46 @@ const heroTokenBadge = document.getElementById("heroTokenBadge");
 const toggleLogBtn = document.getElementById("toggleLogBtn");
 const closeLogBtn = document.getElementById("closeLogBtn");
 const headerContextBar = document.getElementById("headerContextBar");
+const captureBtn = document.getElementById("captureBtn");
+let captureLoadingTimer = null;
+
+function setCaptureBtnLoading(isLoading) {
+    if (!captureBtn) return;
+    if (captureLoadingTimer) {
+        clearTimeout(captureLoadingTimer);
+        captureLoadingTimer = null;
+    }
+    const span = captureBtn.querySelector("span");
+    if (isLoading) {
+        captureBtn.disabled = true;
+        captureBtn.classList.add("is-loading");
+        if (span) span.textContent = tr("gettingToken");
+        captureLoadingTimer = setTimeout(() => {
+            setCaptureBtnLoading(false);
+        }, 90000);
+    } else {
+        captureBtn.disabled = false;
+        captureBtn.classList.remove("is-loading");
+        if (span) span.textContent = tr("captureBtn");
+    }
+}
+
+async function syncCaptureBtnLoadingState(mall = getSelectedMall(), accountId = getSelectedAccountId()) {
+    try {
+        const session = await chrome.storage.session.get([
+            "autoReloginStartedAt",
+            "autoReloginMall",
+            "autoReloginAccountId",
+        ]);
+        const isRunning = Number.isFinite(session.autoReloginStartedAt) &&
+            Date.now() - session.autoReloginStartedAt < 3 * 60 * 1000 &&
+            session.autoReloginMall === mall &&
+            session.autoReloginAccountId === accountId;
+        setCaptureBtnLoading(isRunning);
+    } catch {
+        setCaptureBtnLoading(false);
+    }
+}
 const popupTabButtons = [...document.querySelectorAll("[data-popup-tab]")];
 const popupTabPanels = [...document.querySelectorAll("[data-tab-panel]")];
 const CONFIG_FORMAT = "rok-weekly-auto-config";
@@ -509,6 +560,12 @@ document.getElementById("confirmModal")?.addEventListener("click", (e) => {
 
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+        const shareModal = document.getElementById("shareModal");
+        if (shareModal && !shareModal.hidden) {
+            e.preventDefault();
+            closeShareModal();
+            return;
+        }
         const modal = document.getElementById("confirmModal");
         if (modal && !modal.hidden) {
             e.preventDefault();
@@ -548,9 +605,9 @@ if (closeLogBtn) {
     });
 }
 
-function renderDrawLog(drawLog) {
+function renderDrawLog(drawLog, shouldShow = false) {
     if (drawLog?.length) {
-        showLog();
+        if (shouldShow) showLog();
         logEl.textContent = drawLog.join("\n");
         logEl.scrollTop = logEl.scrollHeight;
     } else {
@@ -1198,6 +1255,7 @@ for (const radio of document.querySelectorAll('input[name="store"]')) {
         await renderActiveAccountPicker(mall);
         if (mall !== getSelectedMall()) return;
         await renderCache(mall);
+        void syncCaptureBtnLoadingState(mall);
     });
 }
 
@@ -1473,6 +1531,7 @@ async function renderActiveAccountPicker(mall) {
         activeAccountIds[mall] = activeAccountSelect.value;
         await chrome.storage.local.set({ activeAccountIds });
     }
+    void syncCaptureBtnLoadingState(mall, activeAccountSelect.value);
 }
 
 async function loadSavedLoginCredentials() {
@@ -1594,6 +1653,7 @@ activeAccountSelect.addEventListener("change", async () => {
         : {};
     activeAccountIds[mall] = accountId;
     await chrome.storage.local.set({ activeAccountIds });
+    void syncCaptureBtnLoadingState(mall, accountId);
     if (mall !== getSelectedMall() || accountId !== getSelectedAccountId()) return;
     await renderCache(mall);
 });
@@ -1745,12 +1805,13 @@ document.getElementById("clearLoginBtn").addEventListener("click", async () => {
     }
 });
 
-async function testRelogin(mall, accountId) {
+async function testRelogin(mall, accountId, { fromHeader = false } = {}) {
     const storeName = mall === "lilithstore" ? "Lilith Store" : "Plutomall";
     try {
         await persistLoginAccounts({ validate: false });
     } catch (error) {
         setLoginSettingsStatus(tr("testCannotStartError", { error: error.message }));
+        if (fromHeader) setStatus(tr("testCannotStartError", { error: error.message }));
         return;
     }
     if (!accountId) {
@@ -1760,34 +1821,73 @@ async function testRelogin(mall, accountId) {
             : activeAccountIds[mall] || accountsByMall[mall][0]?.id;
     }
     if (!accountId) {
-        setLoginSettingsStatus(tr("selectOrAddAccountPrompt", { store: storeName }));
+        const promptMsg = tr("selectOrAddAccountPrompt", { store: storeName });
+        setLoginSettingsStatus(promptMsg);
+        if (fromHeader) {
+            setStatus(promptMsg);
+            showToast({ type: "error", title: tr("notifyFailed"), message: promptMsg });
+            selectPopupTab("automation");
+            selectLoginTab(mall);
+        }
         return;
     }
     const account = accountsByMall[mall].find(item => item.id === accountId);
     if (!account?.username || !account.password) {
-        setLoginSettingsStatus(tr("enterFullCredentialsPrompt", { store: storeName }));
+        const credsMsg = tr("enterFullCredentialsPrompt", { store: storeName });
+        setLoginSettingsStatus(credsMsg);
+        if (fromHeader) {
+            setStatus(credsMsg);
+            showToast({ type: "error", title: tr("notifyFailed"), message: credsMsg });
+            selectPopupTab("automation");
+            selectLoginTab(mall);
+        }
         return;
     }
+
+    if (fromHeader) {
+        const stored = await chrome.storage.local.get("activeAccountIds");
+        const activeAccountIds = stored.activeAccountIds &&
+            typeof stored.activeAccountIds === "object" &&
+            !Array.isArray(stored.activeAccountIds)
+            ? stored.activeAccountIds
+            : {};
+        activeAccountIds[mall] = accountId;
+        await chrome.storage.local.set({ activeAccountIds, currentMall: mall });
+    }
+
+    const isCurrentSelection = mall === getSelectedMall() && accountId === getSelectedAccountId();
+    if (isCurrentSelection) {
+        setCaptureBtnLoading(true);
+    }
     setLoginSettingsStatus(tr("testingAndOpeningTabStatus", { store: storeName }));
+    if (fromHeader) setStatus(tr("testingAndOpeningTabStatus", { store: storeName }));
     showToast({ type: "info", title: tr("notifyInfo"), message: tr("notifyLoginCheckStarted", { store: storeName }) });
-    chrome.runtime.sendMessage({ action: "testRelogin", mall, accountId }, response => {
+    chrome.runtime.sendMessage({ action: "testRelogin", mall, accountId, isManual: true }, response => {
         if (chrome.runtime.lastError) {
-            setLoginSettingsStatus(tr("sendRequestError", { error: chrome.runtime.lastError.message }));
-            showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
+            if (isCurrentSelection) setCaptureBtnLoading(false);
+            const err = chrome.runtime.lastError.message;
+            setLoginSettingsStatus(tr("sendRequestError", { error: err }));
+            if (fromHeader) setStatus(tr("sendRequestError", { error: err }));
+            showToast({ type: "error", title: tr("notifyFailed"), message: err });
         } else if (response?.error) {
+            if (isCurrentSelection) setCaptureBtnLoading(false);
             setLoginSettingsStatus(tr("testFailedError", { error: response.error }));
+            if (fromHeader) setStatus(tr("testFailedError", { error: response.error }));
             showToast({ type: "error", title: tr("notifyFailed"), message: response.error });
         } else if (response?.ok) {
             setLoginSettingsStatus(tr("openedBgTabStatus", { store: storeName }));
+            if (fromHeader) setStatus(tr("openedBgTabStatus", { store: storeName }));
         } else {
+            if (isCurrentSelection) setCaptureBtnLoading(false);
             chrome.storage.local.get("autoReloginStatus", state => {
                 if (chrome.runtime.lastError) {
-                    setLoginSettingsStatus(tr("cannotStartLoginError", { error: chrome.runtime.lastError.message }));
+                    const err = tr("cannotStartLoginError", { error: chrome.runtime.lastError.message });
+                    setLoginSettingsStatus(err);
+                    if (fromHeader) setStatus(err);
                 } else {
-                    setLoginSettingsStatus(
-                        state.autoReloginStatus ||
-                        tr("cannotStartLoginFallback")
-                    );
+                    const fallbackMsg = state.autoReloginStatus || tr("cannotStartLoginFallback");
+                    setLoginSettingsStatus(fallbackMsg);
+                    if (fromHeader) setStatus(fallbackMsg);
                 }
             });
         }
@@ -2372,15 +2472,816 @@ for (const radio of rewardStatsModeRadios) {
     });
 }
 
+function createFallbackSvgIcon(rewardName) {
+    const wrap = document.createElement("span");
+    wrap.className = "reward-badge-icon-svg";
+    const nameLower = String(rewardName ?? "").toLowerCase();
+    if (/đá quý|gem/i.test(nameLower)) {
+        wrap.innerHTML = SVG_ICONS.gem;
+    } else if (/tăng tốc|speedup/i.test(nameLower)) {
+        wrap.innerHTML = SVG_ICONS.clock;
+    } else if (/rương|chest|vật liệu|material/i.test(nameLower)) {
+        wrap.innerHTML = SVG_ICONS.chest;
+    } else {
+        wrap.innerHTML = SVG_ICONS.star;
+    }
+    return wrap;
+}
+
+function getRewardImageSrc(rewardName, rewardIcons = {}) {
+    const id = getRewardIdByName(rewardName);
+    if (id) {
+        return `images/rewards/${id}.png`;
+    }
+    const iconUrl = rewardIcons[rewardName] || (id ? rewardIcons[id] : null);
+    if (iconUrl && typeof iconUrl === "string" && (iconUrl.startsWith("http") || iconUrl.startsWith("images/") || iconUrl.startsWith("chrome-extension://"))) {
+        return iconUrl;
+    }
+    return null;
+}
+
+function getRewardBadgeElement(rewardName, count, rewardIcons = {}) {
+    const badge = document.createElement("span");
+    badge.className = "reward-badge-mini";
+    badge.title = `${rewardName} x${count}`;
+
+    const iconSrc = getRewardImageSrc(rewardName, rewardIcons);
+    if (iconSrc) {
+        const img = document.createElement("img");
+        img.className = "reward-badge-icon";
+        img.src = iconSrc;
+        img.alt = "";
+        img.onerror = () => {
+            img.replaceWith(createFallbackSvgIcon(rewardName));
+        };
+        badge.appendChild(img);
+    } else {
+        badge.appendChild(createFallbackSvgIcon(rewardName));
+    }
+
+    const countSpan = document.createElement("span");
+    countSpan.textContent = `x${count}`;
+    badge.appendChild(countSpan);
+    return badge;
+}
+
+async function loadAvatarImage(url) {
+    if (!url || typeof url !== "string" || !url.trim()) return null;
+    const cleanUrl = url.trim();
+    if (cleanUrl.startsWith("data:") || cleanUrl.startsWith("blob:") || cleanUrl.startsWith("chrome-extension://") || cleanUrl.startsWith("images/")) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = cleanUrl;
+        });
+    }
+
+    try {
+        const res = await fetch(cleanUrl);
+        if (res.ok) {
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    resolve(img);
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    resolve(null);
+                };
+                img.src = objectUrl;
+            });
+        }
+    } catch {
+        // Fall back to direct Image load with crossOrigin
+    }
+
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = cleanUrl;
+    });
+}
+
+function loadRewardImage(rewardName, rewardIcons = {}) {
+    const src = getRewardImageSrc(rewardName, rewardIcons);
+    if (!src) return Promise.resolve(null);
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+}
+
+function createPodiumFallbackAvatar(name) {
+    const fallback = document.createElement("span");
+    fallback.className = "podium-avatar-fallback";
+    fallback.textContent = getInitials(name);
+    return fallback;
+}
+
+function createPodiumColumn(rank, charEntry, rewardIcons = {}, roleAvatarMap = {}) {
+    const col = document.createElement("div");
+    col.className = `podium-col rank-${rank}`;
+
+    const crown = document.createElement("div");
+    crown.className = "podium-crown";
+    crown.innerHTML = rank === 1 ? SVG_ICONS.crown : SVG_ICONS.medal;
+    col.appendChild(crown);
+
+    const avatarWrap = document.createElement("div");
+    avatarWrap.className = "podium-avatar-wrap";
+
+    const charAvatarUrl = charEntry.avatar || roleAvatarMap[String(charEntry.roleId)] || cachedRoles.find(r => String(r.roleId) === String(charEntry.roleId))?.avatar || "";
+    if (charAvatarUrl) {
+        const img = document.createElement("img");
+        img.className = "podium-avatar-img";
+        img.src = charAvatarUrl;
+        img.alt = "";
+        img.onerror = () => {
+            img.replaceWith(createPodiumFallbackAvatar(charEntry.name));
+        };
+        avatarWrap.appendChild(img);
+    } else {
+        avatarWrap.appendChild(createPodiumFallbackAvatar(charEntry.name));
+    }
+
+    const rankBadge = document.createElement("span");
+    rankBadge.className = "podium-rank-badge";
+    rankBadge.textContent = `#${rank}`;
+    avatarWrap.appendChild(rankBadge);
+    col.appendChild(avatarWrap);
+
+    const info = document.createElement("div");
+    info.className = "podium-char-info";
+
+    const name = document.createElement("div");
+    name.className = "podium-char-name";
+    name.textContent = charEntry.name || charEntry.roleId;
+    name.title = charEntry.name || charEntry.roleId;
+
+    const server = document.createElement("div");
+    server.className = "podium-char-server";
+    server.textContent = charEntry.svrId ? `#${charEntry.svrId}` : "";
+
+    info.append(name, server);
+    col.appendChild(info);
+
+    const pedestal = document.createElement("div");
+    pedestal.className = "podium-pedestal";
+
+    const rewardsWrap = document.createElement("div");
+    rewardsWrap.className = "podium-rewards";
+
+    const topRewards = getTopCharacterRewards(charEntry.rewards || {}, 3);
+    for (const rew of topRewards) {
+        const translatedName = translateRewardName(rew.name, currentLanguage);
+        rewardsWrap.appendChild(getRewardBadgeElement(translatedName, rew.count, rewardIcons));
+    }
+    pedestal.appendChild(rewardsWrap);
+
+    const score = document.createElement("div");
+    score.className = "podium-char-score";
+    score.textContent = tr("pointsSuffix", { score: Number(charEntry.score).toLocaleString(getLocaleTag()) });
+    pedestal.appendChild(score);
+
+    col.appendChild(pedestal);
+
+    return col;
+}
+
+function renderPodium(container, top3, rewardIcons = {}, roleAvatarMap = {}) {
+    container.replaceChildren();
+    const podiumSlots = [];
+    if (top3.length >= 2) podiumSlots.push({ rank: 2, char: top3[1] });
+    if (top3.length >= 1) podiumSlots.push({ rank: 1, char: top3[0] });
+    if (top3.length >= 3) podiumSlots.push({ rank: 3, char: top3[2] });
+
+    for (const slot of podiumSlots) {
+        const col = createPodiumColumn(slot.rank, slot.char, rewardIcons, roleAvatarMap);
+        container.appendChild(col);
+    }
+}
+
+function drawRoundRect(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y + w, y, r);
+    ctx.closePath();
+}
+
+async function drawShareCard(canvas, ranked, weekKey, lang, rewardIcons = {}, roleAvatarMap = {}) {
+    const top3 = ranked.slice(0, 3);
+    const runnersUp = ranked.slice(3, 8);
+
+    const dpr = 2;
+    const baseW = 680;
+    const headerH = 104;
+    const podiumH = top3.length > 0 ? 275 : 80;
+    const runnersH = runnersUp.length > 0 ? 46 + (runnersUp.length * 44) : 0;
+    const footerH = 50;
+    const baseH = headerH + podiumH + runnersH + footerH;
+
+    canvas.width = baseW * dpr;
+    canvas.height = baseH * dpr;
+    canvas.style.width = "100%";
+    canvas.style.height = "auto";
+    canvas.style.maxWidth = "100%";
+    canvas.style.display = "block";
+
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    // 1. Background
+    ctx.fillStyle = "#181715";
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    // Ambient glow
+    const glow = ctx.createRadialGradient(baseW / 2, 40, 20, baseW / 2, 40, 340);
+    glow.addColorStop(0, "rgba(204, 120, 92, 0.14)");
+    glow.addColorStop(1, "rgba(24, 23, 21, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    // Outer border
+    ctx.strokeStyle = "#2d2a26";
+    ctx.lineWidth = 1;
+    drawRoundRect(ctx, 1, 1, baseW - 2, baseH - 2, 12);
+    ctx.stroke();
+
+    // 2. Header
+    ctx.fillStyle = "#252320";
+    drawRoundRect(ctx, 28, 22, 120, 22, 11);
+    ctx.fill();
+    ctx.strokeStyle = "#3d3a35";
+    drawRoundRect(ctx, 28, 22, 120, 22, 11);
+    ctx.stroke();
+
+    ctx.fillStyle = "#cc785c";
+    ctx.font = "bold 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("ROK WEEKLY AUTO", 88, 33);
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#faf9f5";
+    ctx.font = "bold 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    const titleText = t("shareModalTitle", {}, lang) || "Weekly Luck Leaderboard";
+    ctx.fillText(titleText, 28, 70);
+
+    ctx.fillStyle = "#a09d96";
+    ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    const metaText = `Week: ${weekKey} • ${t("leaderboardMeta", {}, lang) || "Resets Friday 00:05 UTC"}`;
+    ctx.fillText(metaText, 28, 88);
+
+    ctx.strokeStyle = "#282623";
+    ctx.beginPath();
+    ctx.moveTo(28, 102);
+    ctx.lineTo(baseW - 28, 102);
+    ctx.stroke();
+
+    let curY = 115;
+
+    // 3. Podium Top 3
+    if (top3.length > 0) {
+        const slots = [];
+        if (top3.length >= 2) slots.push({ rank: 2, char: top3[1] });
+        if (top3.length >= 1) slots.push({ rank: 1, char: top3[0] });
+        if (top3.length >= 3) slots.push({ rank: 3, char: top3[2] });
+
+        // Preload avatar images for top 3
+        const avatarImgs = await Promise.all(
+            slots.map(s => {
+                const url = s.char.avatar || roleAvatarMap[String(s.char.roleId)] || cachedRoles.find(r => String(r.roleId) === String(s.char.roleId))?.avatar || "";
+                return loadAvatarImage(url);
+            })
+        );
+
+        // Preload reward images for top 3
+        const slotRewardImgs = await Promise.all(
+            slots.map(s => {
+                const topRewards = getTopCharacterRewards(s.char.rewards, 3);
+                return Promise.all(topRewards.map(r => loadRewardImage(r.name, rewardIcons)));
+            })
+        );
+
+        const colW = 180;
+        const gap = 20;
+        const totalPodiumW = (slots.length * colW) + ((slots.length - 1) * gap);
+        const startX = (baseW - totalPodiumW) / 2;
+
+        const rankColors = {
+            1: { main: "#d97706", grad1: "rgba(217, 119, 6, 0.28)", grad2: "rgba(37, 35, 32, 0.95)", border: "#d97706", height: 86 },
+            2: { main: "#94a3b8", grad1: "rgba(148, 163, 184, 0.22)", grad2: "rgba(37, 35, 32, 0.95)", border: "#64748b", height: 68 },
+            3: { main: "#cc785c", grad1: "rgba(204, 120, 92, 0.22)", grad2: "rgba(37, 35, 32, 0.95)", border: "#a9583e", height: 54 }
+        };
+
+        const podiumBaseline = curY + 248;
+
+        for (let i = 0; i < slots.length; i++) {
+            const slot = slots[i];
+            const cfg = rankColors[slot.rank];
+            const x = startX + (i * (colW + gap));
+            const pTop = podiumBaseline - cfg.height;
+
+            const pedGrad = ctx.createLinearGradient(x, pTop, x, podiumBaseline);
+            pedGrad.addColorStop(0, cfg.grad1);
+            pedGrad.addColorStop(1, cfg.grad2);
+            ctx.fillStyle = pedGrad;
+            drawRoundRect(ctx, x, pTop, colW, cfg.height, 8);
+            ctx.fill();
+            ctx.strokeStyle = cfg.border;
+            ctx.lineWidth = 1.2;
+            drawRoundRect(ctx, x, pTop, colW, cfg.height, 8);
+            ctx.stroke();
+
+            // 1. Inside pedestal box (TOP): Reward Badges with 20px icons
+            const topRewards = getTopCharacterRewards(slot.char.rewards, 3);
+            const rewImgs = slotRewardImgs[i] || [];
+            if (topRewards.length > 0) {
+                const hasImgs = rewImgs.some(Boolean);
+                if (hasImgs) {
+                    const badgeW = 50;
+                    const badgeH = 24;
+                    const totalBadgesW = (topRewards.length * badgeW) + ((topRewards.length - 1) * 6);
+                    let rx = x + ((colW - totalBadgesW) / 2);
+                    const ry = pTop + 10;
+                    for (let rIdx = 0; rIdx < topRewards.length; rIdx++) {
+                        const r = topRewards[rIdx];
+                        const rImg = rewImgs[rIdx];
+                        ctx.fillStyle = "#181715";
+                        drawRoundRect(ctx, rx, ry, badgeW, badgeH, 12);
+                        ctx.fill();
+                        ctx.strokeStyle = "#383530";
+                        ctx.lineWidth = 1;
+                        drawRoundRect(ctx, rx, ry, badgeW, badgeH, 12);
+                        ctx.stroke();
+
+                        if (rImg) {
+                            ctx.drawImage(rImg, rx + 3, ry + 2, 20, 20);
+                        }
+                        ctx.fillStyle = "#faf9f5";
+                        ctx.font = "bold 10px monospace";
+                        ctx.textAlign = "left";
+                        ctx.textBaseline = "middle";
+                        ctx.fillText(`x${r.count}`, rx + 26, ry + 12);
+                        rx += badgeW + 6;
+                    }
+                } else {
+                    const rewStr = topRewards.map(r => `x${r.count} ${translateRewardName(r.name, lang)}`).join(" • ");
+                    ctx.fillStyle = "#e8e0d2";
+                    ctx.font = "9.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "alphabetic";
+                    ctx.fillText(rewStr.length > 28 ? rewStr.slice(0, 26) + "…" : rewStr, x + (colW / 2), pTop + 22);
+                }
+            }
+
+            // 2. Inside pedestal box (BOTTOM): Reward points!
+            const pillW = 82;
+            const pillH = 19;
+            const pillX = x + ((colW - pillW) / 2);
+            const pillY = podiumBaseline - 25;
+            ctx.fillStyle = "#181715";
+            drawRoundRect(ctx, pillX, pillY, pillW, pillH, 9.5);
+            ctx.fill();
+            ctx.strokeStyle = cfg.border;
+            ctx.lineWidth = 1;
+            drawRoundRect(ctx, pillX, pillY, pillW, pillH, 9.5);
+            ctx.stroke();
+
+            ctx.fillStyle = cfg.main;
+            ctx.font = "bold 10px monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`${Number(slot.char.score).toLocaleString()} pts`, x + (colW / 2), pillY + 9.5);
+
+            // 3. Above pedestal box: Avatar, Rank, Char Name, Server
+            const avatarR = slot.rank === 1 ? 26 : 22;
+            const avatarX = x + (colW / 2);
+            const avatarY = pTop - 44 - avatarR;
+
+            // Crown or Medal indicator above avatar
+            ctx.fillStyle = cfg.main;
+            ctx.font = `bold ${slot.rank === 1 ? 16 : 14}px sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(slot.rank === 1 ? "👑" : (slot.rank === 2 ? "🥈" : "🥉"), avatarX, avatarY - avatarR - 11);
+
+            // Ring around avatar
+            ctx.beginPath();
+            ctx.arc(avatarX, avatarY, avatarR + 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = cfg.main;
+            ctx.fill();
+
+            // Avatar background
+            ctx.beginPath();
+            ctx.arc(avatarX, avatarY, avatarR, 0, Math.PI * 2);
+            ctx.fillStyle = "#252320";
+            ctx.fill();
+
+            // Avatar image or fallback monogram
+            const avatarImg = avatarImgs[i];
+            if (avatarImg) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(avatarX, avatarY, avatarR, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.drawImage(avatarImg, avatarX - avatarR, avatarY - avatarR, avatarR * 2, avatarR * 2);
+                ctx.restore();
+            } else {
+                const initials = getInitials(slot.char.name);
+                ctx.fillStyle = "#faf9f5";
+                ctx.font = `bold ${slot.rank === 1 ? 16 : 13}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(initials, avatarX, avatarY);
+            }
+
+            // Rank pill badge (anchored right at the bottom edge of avatar)
+            ctx.fillStyle = cfg.main;
+            drawRoundRect(ctx, avatarX - 14, avatarY + avatarR - 7, 28, 15, 7.5);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 9.5px monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`#${slot.rank}`, avatarX, avatarY + avatarR + 0.5);
+
+            // Character name (with clear spacing below rank badge)
+            ctx.fillStyle = "#faf9f5";
+            ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const cName = slot.char.name || slot.char.roleId;
+            const cNameTrunc = cName.length > 18 ? cName.slice(0, 16) + "…" : cName;
+            ctx.fillText(cNameTrunc, avatarX, pTop - 22);
+
+            // Server ID (below character name, just above pedestal top)
+            ctx.fillStyle = "#a09d96";
+            ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const svrStr = slot.char.svrId ? `#${slot.char.svrId}` : "";
+            if (svrStr) {
+                ctx.fillText(svrStr, avatarX, pTop - 9);
+            }
+        }
+
+        curY = podiumBaseline + 16;
+    }
+
+    // 4. Runners-up list (Ranks 4 to 8)
+    if (runnersUp.length > 0) {
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#a09d96";
+        ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        const runnersTitle = t("runnersUp", {}, lang) || "RUNNERS-UP";
+        ctx.fillText(runnersTitle.toUpperCase(), 32, curY + 14);
+        curY += 24;
+
+        runnersUp.forEach((runner, idx) => {
+            const rankNum = idx + 4;
+            const rowX = 28;
+            const rowW = baseW - 56;
+            const rowH = 36;
+
+            ctx.fillStyle = "#1f1e1b";
+            drawRoundRect(ctx, rowX, curY, rowW, rowH, 6);
+            ctx.fill();
+            ctx.strokeStyle = "#2d2a26";
+            ctx.lineWidth = 1;
+            drawRoundRect(ctx, rowX, curY, rowW, rowH, 6);
+            ctx.stroke();
+
+            ctx.fillStyle = "#cc785c";
+            ctx.font = "bold 11px monospace";
+            ctx.textAlign = "left";
+            ctx.fillText(`#${rankNum}`, rowX + 12, curY + 22);
+
+            ctx.fillStyle = "#faf9f5";
+            ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+            const svrText = runner.svrId ? ` (#${runner.svrId})` : "";
+            const fullName = `${runner.name || runner.roleId}${svrText}`;
+            ctx.fillText(fullName.length > 25 ? fullName.slice(0, 23) + "…" : fullName, rowX + 44, curY + 22);
+
+            const topRew = getTopCharacterRewards(runner.rewards, 2);
+            if (topRew.length > 0) {
+                const rewStr = topRew.map(r => `x${r.count} ${translateRewardName(r.name, lang)}`).join(", ");
+                ctx.fillStyle = "#8e8b82";
+                ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+                ctx.fillText(rewStr.length > 30 ? rewStr.slice(0, 28) + "…" : rewStr, rowX + 240, curY + 22);
+            }
+
+            ctx.fillStyle = "#252320";
+            drawRoundRect(ctx, rowX + rowW - 84, curY + 7, 72, 22, 11);
+            ctx.fill();
+            ctx.fillStyle = "#cc785c";
+            ctx.font = "bold 10.5px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(`${Number(runner.score).toLocaleString()} pts`, rowX + rowW - 48, curY + 22);
+
+            curY += rowH + 6;
+        });
+    }
+
+    // 5. Footer
+    ctx.strokeStyle = "#282623";
+    ctx.beginPath();
+    ctx.moveTo(28, baseH - 36);
+    ctx.lineTo(baseW - 28, baseH - 36);
+    ctx.stroke();
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#6c6a64";
+    ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText("Rise of Kingdoms Weekly Auto • https://github.com/Iwant2dye8976/rokautodraw", 28, baseH - 18);
+
+    ctx.textAlign = "right";
+    const dateStr = new Date().toISOString().slice(0, 10);
+    ctx.fillText(dateStr, baseW - 28, baseH - 18);
+}
+
+async function openShareModal() {
+    const modal = document.getElementById("shareModal");
+    const canvas = document.getElementById("shareCanvas");
+    if (!modal || !canvas) return;
+
+    modal.hidden = false;
+    const allStorage = await chrome.storage.local.get(null);
+    const data = allStorage;
+    const currentWeek = getCurrentWeekKey();
+    const isCurrentWeek = data.weeklyStats?.weekKey === currentWeek;
+    const scoresObj = isCurrentWeek ? (data.weeklyStats?.characterScores || {}) : {};
+    const ranked = Object.values(scoresObj)
+        .filter(item => item && item.score > 0)
+        .sort((a, b) => (b.score - a.score) || ((b.draws || 0) - (a.draws || 0)));
+
+    const roleAvatarMap = {};
+    for (const [key, val] of Object.entries(allStorage)) {
+        if (key.endsWith("_roles") && Array.isArray(val)) {
+            for (const r of val) {
+                if (r?.roleId && r?.avatar) {
+                    roleAvatarMap[String(r.roleId)] = r.avatar;
+                }
+            }
+        }
+    }
+
+    const autoWebhookEnabled = data.autoLeaderboardWebhookEnabled === true;
+    const autoDiscord = data.autoLeaderboardDiscord !== false;
+    const autoTelegram = data.autoLeaderboardTelegram !== false;
+
+    if (autoLeaderboardWebhookEnabledCheckbox) {
+        autoLeaderboardWebhookEnabledCheckbox.checked = autoWebhookEnabled;
+    }
+    if (autoLeaderboardChannels) {
+        autoLeaderboardChannels.hidden = !autoWebhookEnabled;
+    }
+    if (autoLeaderboardDiscordCheckbox) {
+        autoLeaderboardDiscordCheckbox.checked = autoDiscord;
+    }
+    if (autoLeaderboardTelegramCheckbox) {
+        autoLeaderboardTelegramCheckbox.checked = autoTelegram;
+    }
+
+    await drawShareCard(canvas, ranked, currentWeek, currentLanguage, data.rewardIcons || {}, roleAvatarMap);
+}
+
+function closeShareModal() {
+    const modal = document.getElementById("shareModal");
+    if (modal) modal.hidden = true;
+}
+
+const autoLeaderboardWebhookEnabledCheckbox = document.getElementById("autoLeaderboardWebhookEnabled");
+const autoLeaderboardChannels = document.getElementById("autoLeaderboardChannels");
+const autoLeaderboardDiscordCheckbox = document.getElementById("autoLeaderboardDiscord");
+const autoLeaderboardTelegramCheckbox = document.getElementById("autoLeaderboardTelegram");
+
+if (autoLeaderboardWebhookEnabledCheckbox) {
+    autoLeaderboardWebhookEnabledCheckbox.addEventListener("change", async () => {
+        const enabled = autoLeaderboardWebhookEnabledCheckbox.checked;
+        if (autoLeaderboardChannels) {
+            autoLeaderboardChannels.hidden = !enabled;
+        }
+        await chrome.storage.local.set({ autoLeaderboardWebhookEnabled: enabled });
+    });
+}
+
+if (autoLeaderboardDiscordCheckbox) {
+    autoLeaderboardDiscordCheckbox.addEventListener("change", async () => {
+        await chrome.storage.local.set({ autoLeaderboardDiscord: autoLeaderboardDiscordCheckbox.checked });
+    });
+}
+
+if (autoLeaderboardTelegramCheckbox) {
+    autoLeaderboardTelegramCheckbox.addEventListener("change", async () => {
+        await chrome.storage.local.set({ autoLeaderboardTelegram: autoLeaderboardTelegramCheckbox.checked });
+    });
+}
+
+const shareLeaderboardBtn = document.getElementById("shareLeaderboardBtn");
+if (shareLeaderboardBtn) {
+    shareLeaderboardBtn.addEventListener("click", () => {
+        void openShareModal();
+    });
+}
+
+const closeShareModalBtn = document.getElementById("closeShareModalBtn");
+if (closeShareModalBtn) {
+    closeShareModalBtn.addEventListener("click", () => {
+        closeShareModal();
+    });
+}
+
+document.getElementById("shareModal")?.addEventListener("click", (e) => {
+    if (e.target === document.getElementById("shareModal")) {
+        closeShareModal();
+    }
+});
+
+const copyShareImageBtn = document.getElementById("copyShareImageBtn");
+if (copyShareImageBtn) {
+    copyShareImageBtn.addEventListener("click", async () => {
+        const canvas = document.getElementById("shareCanvas");
+        if (!canvas) return;
+        try {
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+            if (!blob) throw new Error("Could not generate image");
+            await navigator.clipboard.write([
+                new ClipboardItem({ "image/png": blob })
+            ]);
+            showToast({ type: "success", title: tr("notifySuccess"), message: tr("imageCopied") });
+        } catch (err) {
+            console.error("Copy share image error:", err);
+            showToast({ type: "error", title: tr("notifyFailed"), message: tr("imageCopyFailed", { error: err.message }) });
+        }
+    });
+}
+
+const downloadShareImageBtn = document.getElementById("downloadShareImageBtn");
+if (downloadShareImageBtn) {
+    downloadShareImageBtn.addEventListener("click", () => {
+        const canvas = document.getElementById("shareCanvas");
+        if (!canvas) return;
+        try {
+            const dataUrl = canvas.toDataURL("image/png");
+            const link = document.createElement("a");
+            const currentWeek = getCurrentWeekKey();
+            link.download = `rok-weekly-luck-leaderboard-${currentWeek}.png`;
+            link.href = dataUrl;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            showToast({ type: "success", title: tr("notifySuccess"), message: tr("exportSuccess") });
+        } catch (err) {
+            console.error("Download share image error:", err);
+            showToast({ type: "error", title: tr("notifyFailed"), message: err.message });
+        }
+    });
+}
+
+const sendWebhookShareImageBtn = document.getElementById("sendWebhookShareImageBtn");
+if (sendWebhookShareImageBtn) {
+    sendWebhookShareImageBtn.addEventListener("click", async () => {
+        const canvas = document.getElementById("shareCanvas");
+        if (!canvas) return;
+
+        const {
+            discordWebhookEnabled,
+            discordWebhookUrl,
+            telegramWebhookEnabled,
+            telegramWebhookUrl,
+            webhookEnabled,
+            webhookUrl,
+        } = await chrome.storage.local.get([
+            "discordWebhookEnabled",
+            "discordWebhookUrl",
+            "telegramWebhookEnabled",
+            "telegramWebhookUrl",
+            "webhookEnabled",
+            "webhookUrl",
+        ]);
+
+        const sendDiscord = autoLeaderboardDiscordCheckbox ? autoLeaderboardDiscordCheckbox.checked : true;
+        const sendTelegram = autoLeaderboardTelegramCheckbox ? autoLeaderboardTelegramCheckbox.checked : true;
+
+        const targets = [];
+        if (discordWebhookEnabled && sendDiscord) {
+            for (const url of parseWebhookUrls(discordWebhookUrl)) {
+                targets.push({ type: "discord", url });
+            }
+        }
+        if (telegramWebhookEnabled && sendTelegram) {
+            for (const url of parseWebhookUrls(telegramWebhookUrl)) {
+                targets.push({ type: "telegram", url });
+            }
+        }
+        if (discordWebhookEnabled === undefined && telegramWebhookEnabled === undefined && webhookEnabled) {
+            for (const url of parseWebhookUrls(webhookUrl)) {
+                const isTg = url.includes("api.telegram.org");
+                if ((isTg && sendTelegram) || (!isTg && sendDiscord)) {
+                    targets.push({ type: isTg ? "telegram" : "discord", url });
+                }
+            }
+        }
+
+        if (targets.length === 0) {
+            showToast({ type: "info", title: tr("notifyFailed"), message: tr("noWebhooksConfigured") });
+            return;
+        }
+
+        sendWebhookShareImageBtn.disabled = true;
+        try {
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+            if (!blob) throw new Error("Could not generate image");
+
+            const currentWeek = getCurrentWeekKey();
+            const title = `${tr("shareModalTitle")} (${currentWeek})`;
+            const caption = tr("leaderboardMeta");
+
+            let successCount = 0;
+            const errors = [];
+
+            for (const target of targets) {
+                try {
+                    if (target.type === "discord") {
+                        const formData = new FormData();
+                        formData.append("files[0]", blob, `rok-leaderboard-${currentWeek}.png`);
+                        formData.append("payload_json", JSON.stringify(buildDiscordImagePayload(title, caption)));
+                        const res = await fetch(target.url, { method: "POST", body: formData });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        successCount++;
+                    } else if (target.type === "telegram") {
+                        const photoUrl = getWebhookPhotoEndpoint(target.url);
+                        const urlObj = new URL(photoUrl);
+                        const chatId = urlObj.searchParams.get("chat_id");
+                        const formData = new FormData();
+                        if (chatId) formData.append("chat_id", chatId);
+                        formData.append("photo", blob, `rok-leaderboard-${currentWeek}.png`);
+                        formData.append("caption", `${title}\n${caption}`);
+                        const res = await fetch(photoUrl, { method: "POST", body: formData });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        successCount++;
+                    }
+                } catch (err) {
+                    console.error("Send webhook error:", err);
+                    errors.push(err.message);
+                }
+            }
+
+            if (successCount > 0) {
+                showToast({ type: "success", title: tr("notifySuccess"), message: tr("webhookImageSent", { count: successCount }) });
+            } else {
+                showToast({ type: "error", title: tr("notifyFailed"), message: tr("webhookImageFailed", { error: errors.join(", ") }) });
+            }
+        } catch (err) {
+            console.error("Webhook image error:", err);
+            showToast({ type: "error", title: tr("notifyFailed"), message: tr("webhookImageFailed", { error: err.message }) });
+        } finally {
+            sendWebhookShareImageBtn.disabled = false;
+        }
+    });
+}
+
 async function renderRewardTotals() {
     const container = document.getElementById("rewardTotalsList");
     if (!container) return;
     const leaderboardWrap = document.getElementById("weeklyLeaderboardWrap");
     const leaderboardList = document.getElementById("weeklyLeaderboardList");
+    const weeklyPodium = document.getElementById("weeklyPodium");
+    const shareBtn = document.getElementById("shareLeaderboardBtn");
     const mode = getRewardStatsMode();
-    const data = await chrome.storage.local.get(["rewardTotals", "weeklyStats"]);
+    const allStorage = await chrome.storage.local.get(null);
+    const data = allStorage;
     const currentWeek = getCurrentWeekKey();
     const isCurrentWeekStats = data.weeklyStats?.weekKey === currentWeek;
+
+    const roleAvatarMap = {};
+    for (const [key, val] of Object.entries(allStorage)) {
+        if (key.endsWith("_roles") && Array.isArray(val)) {
+            for (const r of val) {
+                if (r?.roleId && r?.avatar) {
+                    roleAvatarMap[String(r.roleId)] = r.avatar;
+                }
+            }
+        }
+    }
 
     const rawTotals = mode === "weekly"
         ? (isCurrentWeekStats ? (data.weeklyStats?.rewardTotals || {}) : {})
@@ -2419,54 +3320,73 @@ async function renderRewardTotals() {
 
     if (mode === "weekly" && leaderboardList) {
         leaderboardList.replaceChildren();
+        if (weeklyPodium) weeklyPodium.replaceChildren();
+
         const scoresObj = isCurrentWeekStats ? (data.weeklyStats?.characterScores || {}) : {};
         const ranked = Object.values(scoresObj)
             .filter(item => item && item.score > 0)
             .sort((a, b) => (b.score - a.score) || ((b.draws || 0) - (a.draws || 0)));
 
+        if (shareBtn) shareBtn.hidden = ranked.length === 0;
+
         if (ranked.length === 0) {
+            if (weeklyPodium) weeklyPodium.hidden = true;
             const empty = document.createElement("div");
             empty.className = "login-note";
             empty.textContent = tr("noLeaderboardData");
             leaderboardList.appendChild(empty);
         } else {
-            const fragment = document.createDocumentFragment();
-            ranked.forEach((charEntry, index) => {
-                const row = document.createElement("div");
-                row.className = "leaderboard-item";
+            const rewardIcons = data.rewardIcons || {};
+            const top3 = ranked.slice(0, 3);
+            if (weeklyPodium && top3.length > 0) {
+                weeklyPodium.hidden = false;
+                renderPodium(weeklyPodium, top3, rewardIcons, roleAvatarMap);
+            } else if (weeklyPodium) {
+                weeklyPodium.hidden = true;
+            }
 
-                const rankEl = document.createElement("span");
-                rankEl.className = "leaderboard-rank";
-                rankEl.textContent = `#${index + 1}`;
+            const runnersUp = ranked.slice(3);
+            if (runnersUp.length > 0) {
+                const fragment = document.createDocumentFragment();
+                runnersUp.forEach((charEntry, idx) => {
+                    const row = document.createElement("div");
+                    row.className = "leaderboard-item";
 
-                const infoEl = document.createElement("div");
-                infoEl.className = "leaderboard-info";
+                    const rankEl = document.createElement("span");
+                    rankEl.className = "leaderboard-rank";
+                    rankEl.textContent = `#${idx + 4}`;
 
-                const nameEl = document.createElement("div");
-                nameEl.className = "leaderboard-name";
-                const svrLabel = charEntry.svrId ? ` (#${charEntry.svrId})` : "";
-                nameEl.textContent = `${charEntry.name || charEntry.roleId}${svrLabel}`;
+                    const infoEl = document.createElement("div");
+                    infoEl.className = "leaderboard-info";
 
-                const subEl = document.createElement("div");
-                subEl.className = "leaderboard-sub";
-                const normalizedRewards = normalizeTranslatedRewards(charEntry.rewards || {}, currentLanguage);
-                const rewardSummary = Object.entries(normalizedRewards)
-                    .map(([rName, rCount]) => `x${rCount} ${rName}`)
-                    .join(", ");
-                subEl.textContent = rewardSummary;
-                subEl.title = rewardSummary;
+                    const nameEl = document.createElement("div");
+                    nameEl.className = "leaderboard-name";
+                    const svrLabel = charEntry.svrId ? ` (#${charEntry.svrId})` : "";
+                    nameEl.textContent = `${charEntry.name || charEntry.roleId}${svrLabel}`;
 
-                infoEl.append(nameEl, subEl);
+                    const topRewards = getTopCharacterRewards(charEntry.rewards || {}, 3);
+                    const rewardsRow = document.createElement("div");
+                    rewardsRow.className = "leaderboard-reward-row";
+                    for (const rew of topRewards) {
+                        const translatedName = translateRewardName(rew.name, currentLanguage);
+                        rewardsRow.appendChild(getRewardBadgeElement(translatedName, rew.count, rewardIcons));
+                    }
 
-                const scoreEl = document.createElement("span");
-                scoreEl.className = "leaderboard-score";
-                scoreEl.textContent = tr("pointsSuffix", { score: Number(charEntry.score).toLocaleString(getLocaleTag()) });
+                    infoEl.append(nameEl, rewardsRow);
 
-                row.append(rankEl, infoEl, scoreEl);
-                fragment.appendChild(row);
-            });
-            leaderboardList.appendChild(fragment);
+                    const scoreEl = document.createElement("span");
+                    scoreEl.className = "leaderboard-score";
+                    scoreEl.textContent = tr("pointsSuffix", { score: Number(charEntry.score).toLocaleString(getLocaleTag()) });
+
+                    row.append(rankEl, infoEl, scoreEl);
+                    fragment.appendChild(row);
+                });
+                leaderboardList.appendChild(fragment);
+            }
         }
+    } else {
+        if (weeklyPodium) weeklyPodium.hidden = true;
+        if (shareBtn) shareBtn.hidden = true;
     }
 }
 
@@ -2589,8 +3509,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         setLoginSettingsStatus(statusMsg);
         const lower = statusMsg.toLowerCase();
         if (lower.includes("thành công") || lower.includes("successfully") || lower.includes("success")) {
+            setCaptureBtnLoading(false);
             showToast({ type: "success", title: tr("notifySuccess"), message: statusMsg });
         } else if (lower.includes("thất bại") || lower.includes("failed") || lower.includes("error") || lower.includes("lỗi")) {
+            setCaptureBtnLoading(false);
             showToast({ type: "error", title: tr("notifyFailed"), message: statusMsg, duration: 6000 });
         } else {
             showToast({ type: "info", title: tr("notifyInfo"), message: statusMsg });
@@ -2633,34 +3555,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
             changes[accountStorageKey(mall, accountId, "roles")]
         )
     ) {
+        setCaptureBtnLoading(false);
         renderCache(mall);
     }
 });
 
 document.getElementById("captureBtn").addEventListener("click", async () => {
     const mall = getSelectedMall();
-    try {
-        await persistLoginAccounts({ validate: false });
-        const stored = await chrome.storage.local.get("activeAccountIds");
-        const activeAccountIds = stored.activeAccountIds &&
-            typeof stored.activeAccountIds === "object" &&
-            !Array.isArray(stored.activeAccountIds)
-            ? stored.activeAccountIds
-            : {};
-        activeAccountIds[mall] = getSelectedAccountId();
-        await chrome.storage.local.set({ activeAccountIds, currentMall: mall });
-        const [tab] = await chrome.tabs.query({ url: MALL_TAB_PATTERNS[mall] });
-        if (tab?.id !== undefined) {
-            await chrome.tabs.update(tab.id, { active: true, url: MALL_URLS[mall] });
-        } else {
-            await chrome.tabs.create({ url: MALL_URLS[mall], active: true });
-        }
-        setStatus(tr("openStoreSuccess"), null);
-        showToast({ type: "info", title: tr("notifyInfo"), message: tr("openStoreSuccess") });
-    } catch (error) {
-        setStatus(tr("openStoreError", { error: error.message }));
-        showToast({ type: "error", title: tr("notifyFailed"), message: tr("notifyTokenCaptureFailed", { error: error.message }) });
-    }
+    const accountId = getSelectedAccountId();
+    await testRelogin(mall, accountId, { fromHeader: true });
 });
 
 document.getElementById("refreshCharsBtn").addEventListener("click", async () => {
@@ -2756,6 +3659,7 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
         const mall = await detectMall();
         await renderActiveAccountPicker(mall);
         await renderCache(mall);
+        void syncCaptureBtnLoadingState(mall);
     } catch (error) {
         setStatus(tr("popupInitError", { error: error.message }));
         setCharsError(error.message);

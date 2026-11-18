@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "ROK Weekly Auto",
-  "version": "1.5.1",
+  "version": "1.6.5",
   "permissions": [
     "storage",
     "tabs",
     "scripting",
     "webRequest",
     "alarms",
-    "notifications"
+    "notifications",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://*.lilithgame.com/*",

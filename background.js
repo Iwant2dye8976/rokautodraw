@@ -139,6 +139,363 @@ async function sendWebhookMessage(text, discordPayload = null) {
     }
 }
 
+function drawOffscreenRoundRect(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y + w, y, r);
+    ctx.closePath();
+}
+
+async function renderPodiumBlobOffscreen(ranked, weekKey, lang) {
+    if (typeof OffscreenCanvas === "undefined") return null;
+    const top3 = ranked.slice(0, 3);
+    const runnersUp = ranked.slice(3, 8);
+
+    const dpr = 2;
+    const baseW = 680;
+    const headerH = 104;
+    const podiumH = top3.length > 0 ? 275 : 80;
+    const runnersH = runnersUp.length > 0 ? 46 + (runnersUp.length * 44) : 0;
+    const footerH = 50;
+    const baseH = headerH + podiumH + runnersH + footerH;
+
+    const canvas = new OffscreenCanvas(baseW * dpr, baseH * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    // Background
+    ctx.fillStyle = "#181715";
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    const glow = ctx.createRadialGradient(baseW / 2, 40, 20, baseW / 2, 40, 340);
+    glow.addColorStop(0, "rgba(204, 120, 92, 0.14)");
+    glow.addColorStop(1, "rgba(24, 23, 21, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    ctx.strokeStyle = "#2d2a26";
+    ctx.lineWidth = 1;
+    drawOffscreenRoundRect(ctx, 1, 1, baseW - 2, baseH - 2, 12);
+    ctx.stroke();
+
+    // Header
+    ctx.fillStyle = "#252320";
+    drawOffscreenRoundRect(ctx, 28, 22, 120, 22, 11);
+    ctx.fill();
+    ctx.strokeStyle = "#3d3a35";
+    drawOffscreenRoundRect(ctx, 28, 22, 120, 22, 11);
+    ctx.stroke();
+
+    ctx.fillStyle = "#cc785c";
+    ctx.font = "bold 9px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("ROK WEEKLY AUTO", 88, 33);
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#faf9f5";
+    ctx.font = "bold 20px sans-serif";
+    const titleText = t("shareModalTitle", {}, lang) || "Weekly Luck Leaderboard";
+    ctx.fillText(titleText, 28, 70);
+
+    ctx.fillStyle = "#a09d96";
+    ctx.font = "12px sans-serif";
+    const metaText = `Week: ${weekKey} • ${t("leaderboardMeta", {}, lang) || "Resets Friday 00:05 UTC"}`;
+    ctx.fillText(metaText, 28, 88);
+
+    ctx.strokeStyle = "#282623";
+    ctx.beginPath();
+    ctx.moveTo(28, 102);
+    ctx.lineTo(baseW - 28, 102);
+    ctx.stroke();
+
+    let curY = 115;
+
+    // Podium
+    if (top3.length > 0) {
+        const slots = [];
+        if (top3.length >= 2) slots.push({ rank: 2, char: top3[1] });
+        if (top3.length >= 1) slots.push({ rank: 1, char: top3[0] });
+        if (top3.length >= 3) slots.push({ rank: 3, char: top3[2] });
+
+        const colW = 180;
+        const gap = 20;
+        const totalPodiumW = (slots.length * colW) + ((slots.length - 1) * gap);
+        const startX = (baseW - totalPodiumW) / 2;
+
+        const rankColors = {
+            1: { main: "#d97706", grad1: "rgba(217, 119, 6, 0.28)", grad2: "rgba(37, 35, 32, 0.95)", border: "#d97706", height: 86 },
+            2: { main: "#94a3b8", grad1: "rgba(148, 163, 184, 0.22)", grad2: "rgba(37, 35, 32, 0.95)", border: "#64748b", height: 68 },
+            3: { main: "#cc785c", grad1: "rgba(204, 120, 92, 0.22)", grad2: "rgba(37, 35, 32, 0.95)", border: "#a9583e", height: 54 }
+        };
+
+        const podiumBaseline = curY + 248;
+
+        for (let i = 0; i < slots.length; i++) {
+            const slot = slots[i];
+            const cfg = rankColors[slot.rank];
+            const x = startX + (i * (colW + gap));
+            const pTop = podiumBaseline - cfg.height;
+
+            const pedGrad = ctx.createLinearGradient(x, pTop, x, podiumBaseline);
+            pedGrad.addColorStop(0, cfg.grad1);
+            pedGrad.addColorStop(1, cfg.grad2);
+            ctx.fillStyle = pedGrad;
+            drawOffscreenRoundRect(ctx, x, pTop, colW, cfg.height, 8);
+            ctx.fill();
+            ctx.strokeStyle = cfg.border;
+            ctx.lineWidth = 1.2;
+            drawOffscreenRoundRect(ctx, x, pTop, colW, cfg.height, 8);
+            ctx.stroke();
+
+            const topRewards = getTopCharacterRewards(slot.char.rewards, 3);
+            if (topRewards.length > 0) {
+                const rewStr = topRewards.map(r => `x${r.count} ${translateRewardName(r.name, lang)}`).join(" • ");
+                ctx.fillStyle = "#e8e0d2";
+                ctx.font = "9.5px sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "alphabetic";
+                ctx.fillText(rewStr.length > 28 ? rewStr.slice(0, 26) + "…" : rewStr, x + (colW / 2), pTop + 22);
+            }
+
+            const pillW = 82;
+            const pillH = 19;
+            const pillX = x + ((colW - pillW) / 2);
+            const pillY = podiumBaseline - 25;
+            ctx.fillStyle = "#181715";
+            drawOffscreenRoundRect(ctx, pillX, pillY, pillW, pillH, 9.5);
+            ctx.fill();
+            ctx.strokeStyle = cfg.border;
+            ctx.lineWidth = 1;
+            drawOffscreenRoundRect(ctx, pillX, pillY, pillW, pillH, 9.5);
+            ctx.stroke();
+
+            ctx.fillStyle = cfg.main;
+            ctx.font = "bold 10px monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`${Number(slot.char.score).toLocaleString()} pts`, x + (colW / 2), pillY + 9.5);
+
+            const avatarR = slot.rank === 1 ? 26 : 22;
+            const avatarX = x + (colW / 2);
+            const avatarY = pTop - 44 - avatarR;
+
+            ctx.fillStyle = cfg.main;
+            ctx.font = `bold ${slot.rank === 1 ? 16 : 14}px sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(slot.rank === 1 ? "👑" : (slot.rank === 2 ? "🥈" : "🥉"), avatarX, avatarY - avatarR - 11);
+
+            ctx.beginPath();
+            ctx.arc(avatarX, avatarY, avatarR + 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = cfg.main;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(avatarX, avatarY, avatarR, 0, Math.PI * 2);
+            ctx.fillStyle = "#252320";
+            ctx.fill();
+
+            const initials = getInitials(slot.char.name);
+            ctx.fillStyle = "#faf9f5";
+            ctx.font = `bold ${slot.rank === 1 ? 16 : 13}px sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(initials, avatarX, avatarY);
+
+            ctx.fillStyle = cfg.main;
+            drawOffscreenRoundRect(ctx, avatarX - 14, avatarY + avatarR - 7, 28, 15, 7.5);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 9.5px monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`#${slot.rank}`, avatarX, avatarY + avatarR + 0.5);
+
+            ctx.fillStyle = "#faf9f5";
+            ctx.font = "bold 12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const cName = slot.char.name || slot.char.roleId;
+            const cNameTrunc = cName.length > 18 ? cName.slice(0, 16) + "…" : cName;
+            ctx.fillText(cNameTrunc, avatarX, pTop - 22);
+
+            const svrStr = slot.char.svrId ? `#${slot.char.svrId}` : "";
+            if (svrStr) {
+                ctx.fillStyle = "#a09d96";
+                ctx.font = "10px sans-serif";
+                ctx.fillText(svrStr, avatarX, pTop - 9);
+            }
+        }
+        curY = podiumBaseline + 16;
+    }
+
+    // Runners Up
+    if (runnersUp.length > 0) {
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#a09d96";
+        ctx.font = "bold 11px sans-serif";
+        const runnersTitle = t("runnersUp", {}, lang) || "RUNNERS-UP";
+        ctx.fillText(runnersTitle.toUpperCase(), 32, curY + 14);
+        curY += 24;
+
+        runnersUp.forEach((runner, idx) => {
+            const rankNum = idx + 4;
+            const rowX = 28;
+            const rowW = baseW - 56;
+            const rowH = 36;
+
+            ctx.fillStyle = "#1f1e1b";
+            drawOffscreenRoundRect(ctx, rowX, curY, rowW, rowH, 6);
+            ctx.fill();
+            ctx.strokeStyle = "#2d2a26";
+            ctx.lineWidth = 1;
+            drawOffscreenRoundRect(ctx, rowX, curY, rowW, rowH, 6);
+            ctx.stroke();
+
+            ctx.fillStyle = "#cc785c";
+            ctx.font = "bold 11px monospace";
+            ctx.textAlign = "left";
+            ctx.fillText(`#${rankNum}`, rowX + 12, curY + 22);
+
+            ctx.fillStyle = "#faf9f5";
+            ctx.font = "bold 11px sans-serif";
+            const svrText = runner.svrId ? ` (#${runner.svrId})` : "";
+            const fullName = `${runner.name || runner.roleId}${svrText}`;
+            ctx.fillText(fullName.length > 25 ? fullName.slice(0, 23) + "…" : fullName, rowX + 44, curY + 22);
+
+            const topRew = getTopCharacterRewards(runner.rewards, 2);
+            if (topRew.length > 0) {
+                const rewStr = topRew.map(r => `x${r.count} ${translateRewardName(r.name, lang)}`).join(", ");
+                ctx.fillStyle = "#8e8b82";
+                ctx.font = "10px sans-serif";
+                ctx.fillText(rewStr.length > 30 ? rewStr.slice(0, 28) + "…" : rewStr, rowX + 240, curY + 22);
+            }
+
+            ctx.fillStyle = "#252320";
+            drawOffscreenRoundRect(ctx, rowX + rowW - 84, curY + 7, 72, 22, 11);
+            ctx.fill();
+            ctx.fillStyle = "#cc785c";
+            ctx.font = "bold 10.5px monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(`${Number(runner.score).toLocaleString()} pts`, rowX + rowW - 48, curY + 22);
+
+            curY += rowH + 6;
+        });
+    }
+
+    // Footer
+    ctx.strokeStyle = "#282623";
+    ctx.beginPath();
+    ctx.moveTo(28, baseH - 36);
+    ctx.lineTo(baseW - 28, baseH - 36);
+    ctx.stroke();
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#6c6a64";
+    ctx.font = "10px sans-serif";
+    ctx.fillText("Rise of Kingdoms Weekly Auto • https://github.com/Iwant2dye8976/rokautodraw", 28, baseH - 18);
+
+    ctx.textAlign = "right";
+    const dateStr = new Date().toISOString().slice(0, 10);
+    ctx.fillText(dateStr, baseW - 28, baseH - 18);
+
+    return await canvas.convertToBlob({ type: "image/png" });
+}
+
+async function maybeSendAutoLeaderboardWebhook() {
+    try {
+        const {
+            autoLeaderboardWebhookEnabled,
+            autoLeaderboardDiscord = true,
+            autoLeaderboardTelegram = true,
+            weeklyStats,
+            discordWebhookEnabled,
+            discordWebhookUrl,
+            telegramWebhookEnabled,
+            telegramWebhookUrl,
+            webhookEnabled,
+            webhookUrl,
+        } = await chrome.storage.local.get([
+            "autoLeaderboardWebhookEnabled",
+            "autoLeaderboardDiscord",
+            "autoLeaderboardTelegram",
+            "weeklyStats",
+            "discordWebhookEnabled",
+            "discordWebhookUrl",
+            "telegramWebhookEnabled",
+            "telegramWebhookUrl",
+            "webhookEnabled",
+            "webhookUrl",
+        ]);
+
+        if (autoLeaderboardWebhookEnabled !== true) return;
+        const ranked = getRankedCharacterScores(weeklyStats?.characterScores);
+        if (ranked.length === 0) return;
+
+        const lang = await getLanguage();
+        const currentWeek = weeklyStats?.weekKey || getCurrentWeekKey();
+        const title = `${t("shareModalTitle", {}, lang)} (${currentWeek})`;
+        const caption = t("leaderboardMeta", {}, lang);
+
+        const blob = await renderPodiumBlobOffscreen(ranked, currentWeek, lang);
+        if (!blob) return;
+
+        const targets = [];
+        if (discordWebhookEnabled && autoLeaderboardDiscord !== false) {
+            for (const url of parseWebhookUrls(discordWebhookUrl)) {
+                targets.push({ type: "discord", url });
+            }
+        }
+        if (telegramWebhookEnabled && autoLeaderboardTelegram !== false) {
+            for (const url of parseWebhookUrls(telegramWebhookUrl)) {
+                targets.push({ type: "telegram", url });
+            }
+        }
+        if (discordWebhookEnabled === undefined && telegramWebhookEnabled === undefined && webhookEnabled) {
+            for (const url of parseWebhookUrls(webhookUrl)) {
+                const isTg = url.includes("api.telegram.org");
+                if ((isTg && autoLeaderboardTelegram !== false) || (!isTg && autoLeaderboardDiscord !== false)) {
+                    targets.push({ type: isTg ? "telegram" : "discord", url });
+                }
+            }
+        }
+
+        for (const target of targets) {
+            try {
+                if (target.type === "discord") {
+                    const formData = new FormData();
+                    formData.append("files[0]", blob, `rok-leaderboard-${currentWeek}.png`);
+                    formData.append("payload_json", JSON.stringify(buildDiscordImagePayload(title, caption)));
+                    await fetch(target.url, { method: "POST", body: formData });
+                } else if (target.type === "telegram") {
+                    const photoUrl = getWebhookPhotoEndpoint(target.url);
+                    const urlObj = new URL(photoUrl);
+                    const chatId = urlObj.searchParams.get("chat_id");
+                    const formData = new FormData();
+                    if (chatId) formData.append("chat_id", chatId);
+                    formData.append("photo", blob, `rok-leaderboard-${currentWeek}.png`);
+                    formData.append("caption", `${title}\n${caption}`);
+                    await fetch(photoUrl, { method: "POST", body: formData });
+                }
+            } catch (err) {
+                console.warn("[LilithDraw] Auto leaderboard webhook send failed:", target.url, err);
+            }
+        }
+    } catch (e) {
+        console.warn("[LilithDraw] maybeSendAutoLeaderboardWebhook error:", e);
+    }
+}
+
 
 function sk(mall, name) {
     return `${mall}_${name}`;
@@ -192,6 +549,7 @@ const RELOGIN_SESSION_KEYS = [
     "autoReloginReturnedAt",
     "autoReloginReadyAt",
     "autoReloginAccountSwitch",
+    "autoReloginIsManual",
 ];
 
 async function clearReloginSession(tabId, includeSequence = false) {
@@ -244,13 +602,14 @@ async function continueReloginSequence(expectedMall, expectedAccountId, failure)
     }
 
     let nextIndex = progress.nextIndex;
+    const { autoReloginIsManual } = await chrome.storage.session.get("autoReloginIsManual");
     while (nextIndex < queue.length) {
         const next = queue[nextIndex];
         await chrome.storage.session.set({
             autoReloginQueueIndex: nextIndex,
             autoReloginQueueFailures: failures,
         });
-        if (await openReloginWindow(next.mall, next.accountId)) return;
+        if (await openReloginWindow(next.mall, next.accountId, autoReloginIsManual === true)) return;
         const lang = await getLanguage();
         failures.push({ mall: next.mall, accountId: next.accountId, error: t("cannotOpenLoginTabError", {}, lang) });
         nextIndex++;
@@ -398,7 +757,7 @@ async function fetchJson(url, options = {}, accountId, retries = 1) {
     }
 }
 
-async function openReloginWindow(mall, accountId) {
+async function openReloginWindow(mall, accountId, isManual = false) {
     if (!STORE_CONFIG[mall]) return false;
     const reloginKey = `${mall}:${accountId || "default"}`;
     const lockKey = `lock_relogin_${reloginKey}`;
@@ -420,7 +779,7 @@ async function openReloginWindow(mall, accountId) {
             "autoReloginAccountId",
         ]);
         const lang = await getLanguage();
-        if (settings.autoReloginEnabled !== true) {
+        if (!isManual && settings.autoReloginEnabled !== true) {
             await chrome.storage.local.set({
                 autoReloginStatus: t("enableAutoReloginFirst", {}, lang),
             });
@@ -484,11 +843,14 @@ async function openReloginWindow(mall, accountId) {
             autoReloginStartedAt: Date.now(),
             autoReloginMall: mall,
             autoReloginAccountId: selectedId,
+            autoReloginIsManual: isManual === true,
         });
-        const currentSettings = await chrome.storage.local.get("autoReloginEnabled");
-        if (currentSettings.autoReloginEnabled !== true) {
-            await clearReloginSession(reloginTab.id);
-            return false;
+        if (!isManual) {
+            const currentSettings = await chrome.storage.local.get("autoReloginEnabled");
+            if (currentSettings.autoReloginEnabled !== true) {
+                await clearReloginSession(reloginTab.id);
+                return false;
+            }
         }
         await chrome.storage.local.set({
             currentMall: mall,
@@ -650,6 +1012,7 @@ async function checkAndCatchUpUtcReset() {
             await chrome.storage.local.set({ lastUtcResetDate: todayStr });
             console.log(`[LilithDraw] Catching up missed UTC reset for ${todayStr}`);
             await autoDrawAllMalls("triggerCatchUpUtc");
+            await maybeSendAutoLeaderboardWebhook();
         }
     } catch (e) {
         console.error("[LilithDraw] Could not catch up missed UTC reset:", e);
@@ -768,6 +1131,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
             const todayStr = getTodayUtcDateString();
             await chrome.storage.local.set({ lastUtcResetDate: todayStr });
             await autoDrawAllMalls("triggerUtcReset");
+            await maybeSendAutoLeaderboardWebhook();
         })().catch(error => console.error("[LilithDraw] Scheduled UTC reset check failed:", error));
     } else if (alarm.name === UTC_PRE_RESET_ALARM) {
         console.log("[LilithDraw] Pre-reset proactive relogin alarm fired");
@@ -809,9 +1173,14 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     }
     if (changes.autoReloginEnabled?.newValue === false) {
         void (async () => {
-            const { autoReloginTabId } = await chrome.storage.session.get("autoReloginTabId");
-            await clearReloginSession(autoReloginTabId, true);
-            await chrome.storage.local.remove("autoReloginStatus");
+            const { autoReloginTabId, autoReloginIsManual } = await chrome.storage.session.get([
+                "autoReloginTabId",
+                "autoReloginIsManual",
+            ]);
+            if (autoReloginIsManual !== true) {
+                await clearReloginSession(autoReloginTabId, true);
+                await chrome.storage.local.remove("autoReloginStatus");
+            }
         })().catch(error => console.error("[LilithDraw] Could not clear relogin data:", error));
     }
 });
@@ -1393,7 +1762,14 @@ async function runDraws(token, mall, forceRefreshRoles = false, accountId, onPro
             }
             try {
                 const manifest = await getManifest(token, role, mall, accountId, cachedIdentifiers);
-                Object.assign(sessionRewardIcons, getRewardIcons(manifest));
+                const manifestIcons = getRewardIcons(manifest);
+                Object.assign(sessionRewardIcons, manifestIcons);
+                if (Object.keys(manifestIcons).length > 0) {
+                    try {
+                        const { rewardIcons: existingIcons = {} } = await chrome.storage.local.get("rewardIcons");
+                        await chrome.storage.local.set({ rewardIcons: { ...existingIcons, ...manifestIcons } });
+                    } catch (_) {}
+                }
                 let drawCount = getRoleDrawCount(manifest, mall);
                 if (drawCount > 0) {
                     while (drawCount > 0) {
@@ -1585,6 +1961,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     "autoReloginStartedAt",
                     "autoReloginMall",
                     "autoReloginAccountId",
+                    "autoReloginIsManual",
                 ]),
                 chrome.storage.local.get("autoReloginEnabled"),
             ]);
@@ -1603,7 +1980,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 !isReloginStoreUrl(senderUrl, msg.mall) ||
                 !Number.isFinite(session.autoReloginStartedAt) ||
                 Date.now() - session.autoReloginStartedAt > 10 * 60 * 1000 ||
-                settings.autoReloginEnabled !== true
+                (settings.autoReloginEnabled !== true && session.autoReloginIsManual !== true)
             ) {
                 const lang = await getLanguage();
                 sendResponse({ error: t("invalidAccountSwitchSessionError", {}, lang) });
@@ -1628,7 +2005,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.action === "testRelogin" && STORE_CONFIG[msg.mall]) {
-        openReloginWindow(msg.mall, msg.accountId)
+        openReloginWindow(msg.mall, msg.accountId, true)
             .then(started => sendResponse({ ok: started }))
             .catch(error => sendResponse({ error: error.message }));
         return true;
@@ -1648,11 +2025,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sendResponse({ error: t("invalidTestAccountListError", {}, lang) });
                 return;
             }
-            const { autoReloginEnabled } = await chrome.storage.local.get("autoReloginEnabled");
-            if (autoReloginEnabled !== true) {
-                sendResponse({ error: t("enableAutoReloginFirst", {}, lang) });
-                return;
-            }
             const runningSession = await chrome.storage.session.get("autoReloginStartedAt");
             if (
                 Number.isFinite(runningSession.autoReloginStartedAt) &&
@@ -1666,8 +2038,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 autoReloginQueue: queue,
                 autoReloginQueueIndex: 0,
                 autoReloginQueueFailures: [],
+                autoReloginIsManual: true,
             });
-            const started = await openReloginWindow(msg.mall, requestedIds[0]);
+            const started = await openReloginWindow(msg.mall, requestedIds[0], true);
             if (!started) {
                 void continueReloginSequence(msg.mall, requestedIds[0], t("cannotOpenLoginTabError", {}, lang)).catch(error => {
                     console.error("[LilithDraw] Could not continue account-check sequence:", error);
@@ -1688,6 +2061,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     "autoReloginStartedAt",
                     "autoReloginMall",
                     "autoReloginAccountId",
+                    "autoReloginIsManual",
                 ]),
             ]);
             let origin;
@@ -1705,7 +2079,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sender.tab?.id !== session.autoReloginTabId ||
                 !session.autoReloginStartedAt ||
                 Date.now() - session.autoReloginStartedAt > 10 * 60 * 1000 ||
-                settings.autoReloginEnabled !== true
+                (settings.autoReloginEnabled !== true && session.autoReloginIsManual !== true)
             ) {
                 const lang = await getLanguage();
                 sendResponse({ error: t("noValidReloginSessionError", {}, lang) });
