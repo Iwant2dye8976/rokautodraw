@@ -150,7 +150,7 @@ function drawOffscreenRoundRect(ctx, x, y, w, h, r) {
     ctx.arcTo(x + w, y, x + w, y + h, r);
     ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y + w, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
 }
 
@@ -425,6 +425,8 @@ async function maybeSendAutoLeaderboardWebhook() {
             telegramWebhookUrl,
             webhookEnabled,
             webhookUrl,
+            storeAccounts,
+            lastLeaderboardSentWeekKey,
         } = await chrome.storage.local.get([
             "autoLeaderboardWebhookEnabled",
             "autoLeaderboardDiscord",
@@ -436,47 +438,98 @@ async function maybeSendAutoLeaderboardWebhook() {
             "telegramWebhookUrl",
             "webhookEnabled",
             "webhookUrl",
+            "storeAccounts",
+            "lastLeaderboardSentWeekKey",
         ]);
 
         if (autoLeaderboardWebhookEnabled !== true) return;
-        const ranked = getRankedCharacterScores(weeklyStats?.characterScores);
-        if (ranked.length === 0) return;
+
+        // Active operations guard
+        if (activeDraws.size > 0 || activeRelogins.size > 0) {
+            console.log("[LilithDraw] Postponing auto leaderboard webhook: active draws or relogins in progress");
+            return;
+        }
+
+        // Active relogin queue guard
+        const sessionData = await chrome.storage.session.get(["autoReloginQueue", "autoReloginTabId"]);
+        if (Array.isArray(sessionData.autoReloginQueue) && sessionData.autoReloginQueue.length > 0) {
+            console.log("[LilithDraw] Postponing auto leaderboard webhook: relogin queue still active");
+            return;
+        }
+
+        // Check for remaining draws across accounts before sending
+        const allStorage = await chrome.storage.local.get(null);
+        const accountDraws = extractAllAccountsDraws(allStorage, storeAccounts, STORE_CONFIG);
+        if (hasAccountsWithDrawsLeft(accountDraws)) {
+            console.log("[LilithDraw] Postponing auto leaderboard webhook: accounts still have draws left to complete");
+            return;
+        }
+
+        const currentWeek = getCurrentWeekKey();
+        if (lastLeaderboardSentWeekKey === currentWeek) {
+            console.log(`[LilithDraw] Auto leaderboard webhook already sent for week ${currentWeek}`);
+            return;
+        }
+
+        const isCurrentWeek = weeklyStats?.weekKey === currentWeek;
+        const currentScores = isCurrentWeek ? (weeklyStats?.characterScores || {}) : {};
+        const ranked = getRankedCharacterScores(currentScores);
+        if (ranked.length === 0) {
+            console.log("[LilithDraw] Skipping auto leaderboard webhook: no ranked character scores for this week");
+            return;
+        }
 
         const lang = await getLanguage();
-        const currentWeek = weeklyStats?.weekKey || getCurrentWeekKey();
         const title = `${t("shareModalTitle", {}, lang)} (${currentWeek})`;
         const caption = t("leaderboardMeta", {}, lang);
 
         const blob = await renderPodiumBlobOffscreen(ranked, currentWeek, lang);
-        if (!blob) return;
+        if (!blob) {
+            console.warn("[LilithDraw] Could not render offscreen podium blob");
+            return;
+        }
 
         const targets = [];
-        if (discordWebhookEnabled && autoLeaderboardDiscord !== false) {
-            for (const url of parseWebhookUrls(discordWebhookUrl)) {
+        const sendDiscord = autoLeaderboardDiscord !== false;
+        const sendTelegram = autoLeaderboardTelegram !== false;
+
+        const discordUrls = [
+            ...parseWebhookUrls(discordWebhookUrl),
+            ...parseWebhookUrls(webhookUrl).filter(u => u.includes("discord.com") || u.includes("discordapp.com")),
+        ];
+        const uniqueDiscordUrls = [...new Set(discordUrls)];
+
+        const telegramUrls = [
+            ...parseWebhookUrls(telegramWebhookUrl),
+            ...parseWebhookUrls(webhookUrl).filter(u => u.includes("api.telegram.org")),
+        ];
+        const uniqueTelegramUrls = [...new Set(telegramUrls)];
+
+        if (sendDiscord && (discordWebhookEnabled || autoLeaderboardWebhookEnabled)) {
+            for (const url of uniqueDiscordUrls) {
                 targets.push({ type: "discord", url });
             }
         }
-        if (telegramWebhookEnabled && autoLeaderboardTelegram !== false) {
-            for (const url of parseWebhookUrls(telegramWebhookUrl)) {
+        if (sendTelegram && (telegramWebhookEnabled || autoLeaderboardWebhookEnabled)) {
+            for (const url of uniqueTelegramUrls) {
                 targets.push({ type: "telegram", url });
             }
         }
-        if (discordWebhookEnabled === undefined && telegramWebhookEnabled === undefined && webhookEnabled) {
-            for (const url of parseWebhookUrls(webhookUrl)) {
-                const isTg = url.includes("api.telegram.org");
-                if ((isTg && autoLeaderboardTelegram !== false) || (!isTg && autoLeaderboardDiscord !== false)) {
-                    targets.push({ type: isTg ? "telegram" : "discord", url });
-                }
-            }
+
+        if (targets.length === 0) {
+            console.log("[LilithDraw] No webhook targets configured for auto leaderboard");
+            return;
         }
 
+        let sentSuccess = false;
         for (const target of targets) {
             try {
                 if (target.type === "discord") {
                     const formData = new FormData();
-                    formData.append("files[0]", blob, `rok-leaderboard-${currentWeek}.png`);
+                    formData.append("files[0]", blob, "leaderboard.png");
                     formData.append("payload_json", JSON.stringify(buildDiscordImagePayload(title, caption)));
-                    await fetch(target.url, { method: "POST", body: formData });
+                    const res = await fetch(target.url, { method: "POST", body: formData });
+                    if (res && res.ok) sentSuccess = true;
                 } else if (target.type === "telegram") {
                     const photoUrl = getWebhookPhotoEndpoint(target.url);
                     const urlObj = new URL(photoUrl);
@@ -485,11 +538,17 @@ async function maybeSendAutoLeaderboardWebhook() {
                     if (chatId) formData.append("chat_id", chatId);
                     formData.append("photo", blob, `rok-leaderboard-${currentWeek}.png`);
                     formData.append("caption", `${title}\n${caption}`);
-                    await fetch(photoUrl, { method: "POST", body: formData });
+                    const res = await fetch(photoUrl, { method: "POST", body: formData });
+                    if (res && res.ok) sentSuccess = true;
                 }
             } catch (err) {
                 console.warn("[LilithDraw] Auto leaderboard webhook send failed:", target.url, err);
             }
+        }
+
+        if (sentSuccess) {
+            await chrome.storage.local.set({ lastLeaderboardSentWeekKey: currentWeek });
+            console.log(`[LilithDraw] Auto leaderboard webhook successfully sent for week ${currentWeek}`);
         }
     } catch (e) {
         console.warn("[LilithDraw] maybeSendAutoLeaderboardWebhook error:", e);
@@ -615,6 +674,7 @@ async function continueReloginSequence(expectedMall, expectedAccountId, failure)
         nextIndex++;
     }
     await chrome.storage.session.remove(RELOGIN_SEQUENCE_KEYS);
+    await maybeSendAutoLeaderboardWebhook();
     const lang = await getLanguage();
     await chrome.storage.local.set({
         autoReloginStatus: failures.length
@@ -929,7 +989,13 @@ chrome.webRequest.onSendHeaders.addListener(
 
         if (!mall) mall = await getCurrentMall();
 
-        if (!tab?.url || !mall || !isReloginStoreUrl(new URL(tab.url), mall)) return;
+        let tabUrlObj;
+        try {
+            tabUrlObj = tab?.url ? new URL(tab.url) : null;
+        } catch {
+            tabUrlObj = null;
+        }
+        if (!tabUrlObj || !mall || !isReloginStoreUrl(tabUrlObj, mall)) return;
 
         if (mall && authHeader?.value) {
             const token = authHeader.value;
@@ -1089,7 +1155,8 @@ async function syncAutoCheckAlarms() {
 }
 
 chrome.runtime.onStartup.addListener(() => {
-    void syncAutoCheckAlarms().then(async () => {
+    void (async () => {
+        await syncAutoCheckAlarms();
         const data = await chrome.storage.local.get(["autoCheckEnabled", "autoCheckMode"]);
         const enabled = data.autoCheckEnabled !== false;
         const mode = data.autoCheckMode || "utcReset";
@@ -1100,7 +1167,7 @@ chrome.runtime.onStartup.addListener(() => {
                 await checkAndCatchUpUtcReset();
             }
         }
-    }).catch(error => {
+    })().catch(error => {
         console.error("[LilithDraw] Startup auto check failed:", error);
     });
 });
@@ -1289,7 +1356,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             "autoReloginReadyAt",
         ]);
         if (tabId !== autoReloginTabId) return;
-        const url = new URL(tab.url);
+        let url;
+        try {
+            url = new URL(tab.url);
+        } catch {
+            return;
+        }
         if (!isReloginStoreUrl(url, autoReloginMall)) return;
         if (autoReloginReadyAt) {
             await refreshStoreAfterRelogin(autoReloginMall, autoReloginAccountId);
@@ -1356,20 +1428,15 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                     });
                     if (!choice) return { found: false };
 
-                    const ready = await new Promise((resolve, reject) => {
-                        chrome.runtime.sendMessage(
-                            { action: "accountSwitchReady", mall },
-                            response => {
-                                if (chrome.runtime.lastError) {
-                                    reject(new Error(chrome.runtime.lastError.message));
-                                } else if (!response?.ok) {
-                                    reject(new Error(response?.error || "cannotConfirmAccountSwitchError"));
-                                } else {
-                                    resolve(response);
-                                }
-                            }
-                        );
-                    });
+                    let ready;
+                    try {
+                        ready = await chrome.runtime.sendMessage({ action: "accountSwitchReady", mall });
+                        if (!ready?.ok) {
+                            throw new Error(ready?.error || "cannotConfirmAccountSwitchError");
+                        }
+                    } catch (err) {
+                        throw new Error(err.message);
+                    }
                     if (!ready?.ok) return { found: true, clicked: false };
                     choice.click();
                     return { found: true, clicked: true };
@@ -1399,6 +1466,20 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             console.error("[LilithDraw] Could not save account-switch error status:", storageError);
         });
     });
+});
+
+chrome.tabs.onRemoved.addListener((closedTabId) => {
+    void (async () => {
+        try {
+            const { autoReloginTabId } = await chrome.storage.session.get("autoReloginTabId");
+            if (closedTabId === autoReloginTabId) {
+                console.log(`[LilithDraw] Relogin tab ${closedTabId} was closed.`);
+                await clearReloginSession(closedTabId, true);
+            }
+        } catch (e) {
+            console.warn("[LilithDraw] Error handling closed relogin tab:", e);
+        }
+    })();
 });
 
 async function enqueueExpiredAccounts(expiredQueue) {
@@ -1474,6 +1555,9 @@ async function autoDrawAllMalls(trigger = "triggerAutoCheck") {
         }
     }
     await enqueueExpiredAccounts(expiredQueue);
+    if (expiredQueue.length === 0) {
+        await maybeSendAutoLeaderboardWebhook();
+    }
 }
 
 async function autoDrawMall(mall, trigger, accountId) {
@@ -1538,6 +1622,9 @@ async function autoDrawMall(mall, trigger, accountId) {
         activeDraws.delete(profileKey);
         await setSessionLock(lockKey, false);
         await chrome.storage.local.set({ [ask(mall, accountId, "isDrawing")]: false });
+        if (trigger === "triggerPostRelogin") {
+            await maybeSendAutoLeaderboardWebhook();
+        }
     }
 }
 
@@ -1587,8 +1674,8 @@ async function getCharacterById(token, roleId, mall, accountId) {
     return roles.find(c => String(c.roleId) === String(roleId));
 }
 
-async function getManifest(token, role, mall, accountId, cachedIdentifiers = null) {
-    const lang = await getLanguage();
+async function getManifest(token, role, mall, accountId, cachedIdentifiers = null, cachedLang = null) {
+    const lang = cachedLang || await getLanguage();
     const identifiers = cachedIdentifiers || getAppIdentifiers(await getStoreData(mall, accountId), lang);
     const config = STORE_CONFIG[mall];
     const params = new URLSearchParams({
@@ -1621,12 +1708,14 @@ async function getTotalDrawsLeft(token, roles, mall, accountId) {
         await setStoreData(mall, { drawsLeft: 0, lastCheck }, accountId);
         return 0;
     }
+    const lang = await getLanguage();
+    const identifiers = getAppIdentifiers(await getStoreData(mall, accountId), lang);
     let total = 0;
     // shortcut: 3 parallel manifest requests, lower it if the API starts returning HTTP 429.
     for (let i = 0; i < roles.length; i += 3) {
         await Promise.all(roles.slice(i, i + 3).map(async role => {
             try {
-                const manifest = await getManifest(token, role, mall, accountId);
+                const manifest = await getManifest(token, role, mall, accountId, identifiers, lang);
                 total += getRoleDrawCount(manifest, mall);
             } catch (e) {
                 console.warn(`[LilithDraw][${mall}] Error getting draw count for role ${role.roleId}:`, e);
@@ -2005,9 +2094,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.action === "testRelogin" && STORE_CONFIG[msg.mall]) {
-        openReloginWindow(msg.mall, msg.accountId, true)
-            .then(started => sendResponse({ ok: started }))
-            .catch(error => sendResponse({ error: error.message }));
+        (async () => {
+            try {
+                const started = await openReloginWindow(msg.mall, msg.accountId, true);
+                sendResponse({ ok: started });
+            } catch (error) {
+                sendResponse({ error: error.message });
+            }
+        })();
         return true;
     }
 
@@ -2025,13 +2119,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sendResponse({ error: t("invalidTestAccountListError", {}, lang) });
                 return;
             }
-            const runningSession = await chrome.storage.session.get("autoReloginStartedAt");
+            const runningSession = await chrome.storage.session.get([
+                "autoReloginStartedAt",
+                "autoReloginTabId"
+            ]);
             if (
                 Number.isFinite(runningSession.autoReloginStartedAt) &&
                 Date.now() - runningSession.autoReloginStartedAt < 5 * 60 * 1000
             ) {
-                sendResponse({ error: t("reloginFlowAlreadyRunningError", {}, lang) });
-                return;
+                let tabAlive = false;
+                if (Number.isInteger(runningSession.autoReloginTabId)) {
+                    try {
+                        await chrome.tabs.get(runningSession.autoReloginTabId);
+                        tabAlive = true;
+                    } catch {
+                        tabAlive = false;
+                    }
+                }
+                if (tabAlive) {
+                    sendResponse({ error: t("reloginFlowAlreadyRunningError", {}, lang) });
+                    return;
+                }
+                await clearReloginSession(runningSession.autoReloginTabId, true);
             }
             const queue = requestedIds.map(id => ({ mall: msg.mall, accountId: id }));
             await chrome.storage.session.set({

@@ -37,9 +37,12 @@
                 const url = typeof args[0] === "string" ? args[0] : (args[0]?.url || "");
                 if (isTargetUrl(url)) {
                     const clone = response.clone();
-                    clone.json().then(data => {
-                        dispatchResult(url, response.status, data);
-                    }).catch(() => {});
+                    void (async () => {
+                        try {
+                            const data = await clone.json();
+                            dispatchResult(url, response.status, data);
+                        } catch {}
+                    })();
                 }
             } catch {}
             return response;

@@ -893,12 +893,7 @@ async function renderCache(mall) {
     const accountId = getSelectedAccountId();
     const viewVersion = ++accountViewVersion;
     try {
-        const res = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage({ action: "getCache", mall, accountId }, (r) => {
-                if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-                resolve(r);
-            });
-        });
+        const res = await chrome.runtime.sendMessage({ action: "getCache", mall, accountId });
 
         if (!isCurrentAccountView(mall, accountId, viewVersion)) return;
         if (res?.error) throw new Error(res.error);
@@ -954,95 +949,87 @@ async function fetchAndRender(mall) {
     setStatus(tr("refreshing"), null);
     setCharsLoading();
     refreshInFlight = true;
-    return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ action: "refresh", mall: m, accountId }, async (res) => {
-            refreshInFlight = false;
-            if (!isCurrentAccountView(m, accountId, viewVersion)) {
-                resolve(null);
-                return;
-            }
-            if (chrome.runtime.lastError) {
-                setStatus(tr("connectionError"), false);
-                setCharsError(tr("extensionConnectionError"));
-                return reject(new Error(chrome.runtime.lastError.message));
-            }
-            if (!res) {
-                setStatus(tr("responseError"), false);
-                setCharsError(tr("extensionEmptyResponse"));
-                return reject(new Error(tr("extensionEmptyResponse")));
-            }
-            if (res?.error) {
-                const isExp = res.isExpired || res.isValidToken === false || /hết hạn|expired|invalid|401|403/i.test(res.error);
-                if (isExp) {
-                    setStatus(tr("tokenExpired"), false);
-                    setCharsError(tr("tokenExpiredReloginPrompt"));
-                } else {
-                    setStatus(res.error.length > 25 ? res.error.slice(0, 25) + "…" : res.error, false);
-                    setCharsError(res.error);
-                }
-                return reject(new Error(res.error));
-            }
-
-            const tokenKey = accountStorageKey(m, accountId, "token");
-            const favoritesKey = accountStorageKey(m, accountId, "favoriteRoleIds");
-            let favoritesData = null;
-            try {
-                const data = await chrome.storage.local.get([tokenKey, favoritesKey]);
-                if (!isCurrentAccountView(m, accountId, viewVersion)) {
-                    resolve(null);
-                    return;
-                }
-                tokenBox.value = data[tokenKey] || "";
-                favoritesData = data[favoritesKey] ?? [];
-            } catch (error) {
-                if (!isCurrentAccountView(m, accountId, viewVersion)) {
-                    resolve(null);
-                    return;
-                }
-                setStatus(tr("errorPrefix", { error: error.message }), false);
-                reject(error);
-                return;
-            }
-
-            const status = evaluateTokenStatus(tokenBox.value, true);
-            setStatus(status.text, status.state);
-            renderDrawsLeft(res.totalDrawsLeft);
-
-            const roles = Array.isArray(res.roles) ? res.roles : [];
-            if (roles.length > 0) {
-                await renderChars(roles, m, accountId, viewVersion, favoritesData);
+    try {
+        const res = await chrome.runtime.sendMessage({ action: "refresh", mall: m, accountId });
+        refreshInFlight = false;
+        if (!isCurrentAccountView(m, accountId, viewVersion)) {
+            return null;
+        }
+        if (!res) {
+            setStatus(tr("responseError"), false);
+            setCharsError(tr("extensionEmptyResponse"));
+            throw new Error(tr("extensionEmptyResponse"));
+        }
+        if (res?.error) {
+            const isExp = res.isExpired || res.isValidToken === false || /hết hạn|expired|invalid|401|403/i.test(res.error);
+            if (isExp) {
+                setStatus(tr("tokenExpired"), false);
+                setCharsError(tr("tokenExpiredReloginPrompt"));
             } else {
-                cachedRoles = [];
-                setCharsEmpty(tr("noCharsFound"));
+                setStatus(res.error.length > 25 ? res.error.slice(0, 25) + "…" : res.error, false);
+                setCharsError(res.error);
             }
+            throw new Error(res.error);
+        }
 
-            resolve(res);
-        });
-    });
+        const tokenKey = accountStorageKey(m, accountId, "token");
+        const favoritesKey = accountStorageKey(m, accountId, "favoriteRoleIds");
+        let favoritesData = null;
+        try {
+            const data = await chrome.storage.local.get([tokenKey, favoritesKey]);
+            if (!isCurrentAccountView(m, accountId, viewVersion)) {
+                return null;
+            }
+            tokenBox.value = data[tokenKey] || "";
+            favoritesData = data[favoritesKey] ?? [];
+        } catch (error) {
+            if (!isCurrentAccountView(m, accountId, viewVersion)) {
+                return null;
+            }
+            setStatus(tr("errorPrefix", { error: error.message }), false);
+            throw error;
+        }
+
+        const status = evaluateTokenStatus(tokenBox.value, true);
+        setStatus(status.text, status.state);
+        renderDrawsLeft(res.totalDrawsLeft);
+
+        const roles = Array.isArray(res.roles) ? res.roles : [];
+        if (roles.length > 0) {
+            await renderChars(roles, m, accountId, viewVersion, favoritesData);
+        } else {
+            cachedRoles = [];
+            setCharsEmpty(tr("noCharsFound"));
+        }
+
+        return res;
+    } catch (err) {
+        refreshInFlight = false;
+        if (!isCurrentAccountView(m, accountId, viewVersion)) return null;
+        setStatus(tr("connectionError"), false);
+        setCharsError(err.message || tr("extensionConnectionError"));
+        throw err;
+    }
 }
 
-function openCharacterHistory(roleId, roleName) {
+async function openCharacterHistory(roleId, roleName) {
     const mall = getSelectedMall();
     showHistoryLoading(roleName);
-    chrome.runtime.sendMessage(
-        {
+    try {
+        const res = await chrome.runtime.sendMessage({
             action: "getDrawHistory",
             roleId,
             mall,
             accountId: getSelectedAccountId(),
-        },
-        (res) => {
-            if (chrome.runtime.lastError) {
-                showHistoryError(chrome.runtime.lastError.message);
-                return;
-            }
-            if (res?.error || !res?.character || !res?.history) {
-                showHistoryError(res?.error || tr("invalidHistoryResponse"));
-                return;
-            }
-            showHistory(res.character, res.history);
+        });
+        if (res?.error || !res?.character || !res?.history) {
+            showHistoryError(res?.error || tr("invalidHistoryResponse"));
+            return;
         }
-    );
+        showHistory(res.character, res.history);
+    } catch (err) {
+        showHistoryError(err.message);
+    }
 }
 
 function showHistory(character, history) {
@@ -1862,14 +1849,9 @@ async function testRelogin(mall, accountId, { fromHeader = false } = {}) {
     setLoginSettingsStatus(tr("testingAndOpeningTabStatus", { store: storeName }));
     if (fromHeader) setStatus(tr("testingAndOpeningTabStatus", { store: storeName }));
     showToast({ type: "info", title: tr("notifyInfo"), message: tr("notifyLoginCheckStarted", { store: storeName }) });
-    chrome.runtime.sendMessage({ action: "testRelogin", mall, accountId, isManual: true }, response => {
-        if (chrome.runtime.lastError) {
-            if (isCurrentSelection) setCaptureBtnLoading(false);
-            const err = chrome.runtime.lastError.message;
-            setLoginSettingsStatus(tr("sendRequestError", { error: err }));
-            if (fromHeader) setStatus(tr("sendRequestError", { error: err }));
-            showToast({ type: "error", title: tr("notifyFailed"), message: err });
-        } else if (response?.error) {
+    try {
+        const response = await chrome.runtime.sendMessage({ action: "testRelogin", mall, accountId, isManual: true });
+        if (response?.error) {
             if (isCurrentSelection) setCaptureBtnLoading(false);
             setLoginSettingsStatus(tr("testFailedError", { error: response.error }));
             if (fromHeader) setStatus(tr("testFailedError", { error: response.error }));
@@ -1879,19 +1861,18 @@ async function testRelogin(mall, accountId, { fromHeader = false } = {}) {
             if (fromHeader) setStatus(tr("openedBgTabStatus", { store: storeName }));
         } else {
             if (isCurrentSelection) setCaptureBtnLoading(false);
-            chrome.storage.local.get("autoReloginStatus", state => {
-                if (chrome.runtime.lastError) {
-                    const err = tr("cannotStartLoginError", { error: chrome.runtime.lastError.message });
-                    setLoginSettingsStatus(err);
-                    if (fromHeader) setStatus(err);
-                } else {
-                    const fallbackMsg = state.autoReloginStatus || tr("cannotStartLoginFallback");
-                    setLoginSettingsStatus(fallbackMsg);
-                    if (fromHeader) setStatus(fallbackMsg);
-                }
-            });
+            const state = await chrome.storage.local.get("autoReloginStatus");
+            const fallbackMsg = state.autoReloginStatus || tr("cannotStartLoginFallback");
+            setLoginSettingsStatus(fallbackMsg);
+            if (fromHeader) setStatus(fallbackMsg);
         }
-    });
+    } catch (err) {
+        if (isCurrentSelection) setCaptureBtnLoading(false);
+        const errMsg = err.message;
+        setLoginSettingsStatus(tr("sendRequestError", { error: errMsg }));
+        if (fromHeader) setStatus(tr("sendRequestError", { error: errMsg }));
+        showToast({ type: "error", title: tr("notifyFailed"), message: errMsg });
+    }
 }
 
 document.getElementById("testLilithReloginBtn").addEventListener("click", () => {
@@ -1926,21 +1907,22 @@ for (const [buttonId, mall] of [
             return;
         }
         showToast({ type: "info", title: tr("notifyInfo"), message: tr("notifyLoginCheckAllStarted", { count: accounts.length, store: storeName }) });
-        chrome.runtime.sendMessage({
-            action: "testReloginSequence",
-            mall,
-            accountIds: accounts.map(account => account.id),
-        }, response => {
-            if (chrome.runtime.lastError) {
-                setLoginSettingsStatus(tr("sendRequestError", { error: chrome.runtime.lastError.message }));
-                showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
-            } else if (response?.error) {
+        try {
+            const response = await chrome.runtime.sendMessage({
+                action: "testReloginSequence",
+                mall,
+                accountIds: accounts.map(account => account.id),
+            });
+            if (response?.error) {
                 setLoginSettingsStatus(tr("testCannotStartError", { error: response.error }));
                 showToast({ type: "error", title: tr("notifyFailed"), message: response.error });
             } else {
                 setLoginSettingsStatus(tr("testingSequentialAccountsStatus", { count: accounts.length, store: storeName }));
             }
-        });
+        } catch (err) {
+            setLoginSettingsStatus(tr("sendRequestError", { error: err.message }));
+            showToast({ type: "error", title: tr("notifyFailed"), message: err.message });
+        }
     });
 }
 
@@ -2401,17 +2383,13 @@ if (saveDiscordWebhookBtn && discordWebhookUrlInput) {
     });
 }
 
-function handleWebhookTest(btn, type, urlInput, setStatusFn) {
+async function handleWebhookTest(btn, type, urlInput, setStatusFn) {
     btn.disabled = true;
     setStatusFn(tr("webhookSendingTest"));
     const currentVal = urlInput.value.trim();
-    chrome.runtime.sendMessage({ action: "testWebhook", type, url: currentVal }, res => {
+    try {
+        const res = await chrome.runtime.sendMessage({ action: "testWebhook", type, url: currentVal });
         btn.disabled = false;
-        if (chrome.runtime.lastError) {
-            setStatusFn(tr("webhookExtError", { error: chrome.runtime.lastError.message }));
-            showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
-            return;
-        }
         if (res?.ok) {
             const success = res.successCount ?? 1;
             const total = res.totalCount ?? success;
@@ -2422,7 +2400,11 @@ function handleWebhookTest(btn, type, urlInput, setStatusFn) {
             setStatusFn(tr("webhookTestFailed", { error: err }));
             showToast({ type: "error", title: tr("notifyFailed"), message: err });
         }
-    });
+    } catch (err) {
+        btn.disabled = false;
+        setStatusFn(tr("webhookExtError", { error: err.message }));
+        showToast({ type: "error", title: tr("notifyFailed"), message: err.message });
+    }
 }
 
 if (testDiscordWebhookBtn && discordWebhookUrlInput) {
@@ -3162,6 +3144,13 @@ if (sendWebhookShareImageBtn) {
         const canvas = document.getElementById("shareCanvas");
         if (!canvas) return;
 
+        const allStorage = await chrome.storage.local.get(null);
+        const accountDraws = extractAllAccountsDraws(allStorage, allStorage.storeAccounts, STORE_CONFIG);
+        if (hasAccountsWithDrawsLeft(accountDraws)) {
+            showToast({ type: "info", title: tr("notifyInfo"), message: tr("podiumDrawsRemainingError") });
+            return;
+        }
+
         const {
             discordWebhookEnabled,
             discordWebhookUrl,
@@ -3169,35 +3158,32 @@ if (sendWebhookShareImageBtn) {
             telegramWebhookUrl,
             webhookEnabled,
             webhookUrl,
-        } = await chrome.storage.local.get([
-            "discordWebhookEnabled",
-            "discordWebhookUrl",
-            "telegramWebhookEnabled",
-            "telegramWebhookUrl",
-            "webhookEnabled",
-            "webhookUrl",
-        ]);
+        } = allStorage;
 
         const sendDiscord = autoLeaderboardDiscordCheckbox ? autoLeaderboardDiscordCheckbox.checked : true;
         const sendTelegram = autoLeaderboardTelegramCheckbox ? autoLeaderboardTelegramCheckbox.checked : true;
 
+        const discordUrls = [
+            ...parseWebhookUrls(discordWebhookUrl),
+            ...parseWebhookUrls(webhookUrl).filter(u => u.includes("discord.com") || u.includes("discordapp.com")),
+        ];
+        const uniqueDiscordUrls = [...new Set(discordUrls)];
+
+        const telegramUrls = [
+            ...parseWebhookUrls(telegramWebhookUrl),
+            ...parseWebhookUrls(webhookUrl).filter(u => u.includes("api.telegram.org")),
+        ];
+        const uniqueTelegramUrls = [...new Set(telegramUrls)];
+
         const targets = [];
-        if (discordWebhookEnabled && sendDiscord) {
-            for (const url of parseWebhookUrls(discordWebhookUrl)) {
+        if (sendDiscord && (discordWebhookEnabled || uniqueDiscordUrls.length > 0)) {
+            for (const url of uniqueDiscordUrls) {
                 targets.push({ type: "discord", url });
             }
         }
-        if (telegramWebhookEnabled && sendTelegram) {
-            for (const url of parseWebhookUrls(telegramWebhookUrl)) {
+        if (sendTelegram && (telegramWebhookEnabled || uniqueTelegramUrls.length > 0)) {
+            for (const url of uniqueTelegramUrls) {
                 targets.push({ type: "telegram", url });
-            }
-        }
-        if (discordWebhookEnabled === undefined && telegramWebhookEnabled === undefined && webhookEnabled) {
-            for (const url of parseWebhookUrls(webhookUrl)) {
-                const isTg = url.includes("api.telegram.org");
-                if ((isTg && sendTelegram) || (!isTg && sendDiscord)) {
-                    targets.push({ type: isTg ? "telegram" : "discord", url });
-                }
             }
         }
 
@@ -3222,7 +3208,7 @@ if (sendWebhookShareImageBtn) {
                 try {
                     if (target.type === "discord") {
                         const formData = new FormData();
-                        formData.append("files[0]", blob, `rok-leaderboard-${currentWeek}.png`);
+                        formData.append("files[0]", blob, "leaderboard.png");
                         formData.append("payload_json", JSON.stringify(buildDiscordImagePayload(title, caption)));
                         const res = await fetch(target.url, { method: "POST", body: formData });
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3450,7 +3436,7 @@ if (clearRewardsBtn) {
             cancelText: tr("modalCancelBtn"),
         });
         if (!confirmed) return;
-        await chrome.storage.local.remove(["rewardTotals", "weeklyStats"]);
+        await chrome.storage.local.remove(["rewardTotals", "weeklyStats", "lastLeaderboardSentWeekKey"]);
         await renderRewardTotals();
         showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDataCleared") });
     });
@@ -3595,14 +3581,10 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
     logEl.textContent = tr("startingDraw");
     showToast({ type: "info", message: tr("notifyDrawStarted") });
 
-    chrome.runtime.sendMessage({ action: "drawNow", mall, accountId }, (res) => {
+    try {
+        const res = await chrome.runtime.sendMessage({ action: "drawNow", mall, accountId });
         btn.disabled = false;
         btn.textContent = tr("drawNowBtn");
-        if (chrome.runtime.lastError) {
-            setStatus(chrome.runtime.lastError.message);
-            showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
-            return;
-        }
         if (res?.error) {
             const isExp = /hết hạn|expired|invalid|401|403/i.test(res.error);
             setStatus(isExp ? tr("tokenExpired") : (res.error.length > 25 ? res.error.slice(0, 25) + "…" : res.error), false);
@@ -3616,7 +3598,12 @@ document.getElementById("drawNowBtn").addEventListener("click", async () => {
         }
         showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDrawCompleted") });
         void renderCache(mall);
-    });
+    } catch (err) {
+        btn.disabled = false;
+        btn.textContent = tr("drawNowBtn");
+        setStatus(err.message);
+        showToast({ type: "error", title: tr("notifyFailed"), message: err.message });
+    }
 });
 
 (async () => {
@@ -3674,14 +3661,10 @@ if (drawAllBtn) {
         showLog();
         logEl.textContent = tr("startingDrawAll");
         showToast({ type: "info", message: tr("startingDrawAll") });
-        chrome.runtime.sendMessage({ action: "drawAll" }, res => {
+        try {
+            const res = await chrome.runtime.sendMessage({ action: "drawAll" });
             drawAllBtn.disabled = false;
             drawAllBtn.textContent = tr("drawAllBtn");
-            if (chrome.runtime.lastError) {
-                setStatus(chrome.runtime.lastError.message);
-                showToast({ type: "error", title: tr("notifyFailed"), message: chrome.runtime.lastError.message });
-                return;
-            }
             if (res?.error) {
                 setStatus(res.error, false);
                 showToast({ type: "error", title: tr("notifyFailed"), message: res.error });
@@ -3689,6 +3672,11 @@ if (drawAllBtn) {
             }
             showToast({ type: "success", title: tr("notifySuccess"), message: tr("notifyDrawCompleted") });
             void renderCache(getSelectedMall());
-        });
+        } catch (err) {
+            drawAllBtn.disabled = false;
+            drawAllBtn.textContent = tr("drawAllBtn");
+            setStatus(err.message);
+            showToast({ type: "error", title: tr("notifyFailed"), message: err.message });
+        }
     });
 }

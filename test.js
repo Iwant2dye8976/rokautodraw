@@ -19,6 +19,7 @@ const {
     buildSingleDiscordRewardEmbed,
     getRoleDrawCount,
     getNextUtcResetTime,
+    getPreviousUtcResetTime,
     getTodayUtcDateString,
     isUtcResetMissed,
     normalizeSearchText,
@@ -44,6 +45,8 @@ const {
     getPreResetReloginTime,
     encryptJsonWithPassphrase,
     decryptJsonWithPassphrase,
+    extractAllAccountsDraws,
+    hasAccountsWithDrawsLeft,
     POPUP_TABS,
     normalizePopupTab,
     SUPPORTED_LANGUAGES,
@@ -201,7 +204,29 @@ test("getNextUtcResetTime targets Friday 00:05 UTC correctly", () => {
     assert.equal(nextDaily.getUTCDate(), 28, "Advances 1 day in everyday mode");
 });
 
-test("isUtcResetMissed detects missed runs when opening browser late on reset day", () => {
+test("getPreviousUtcResetTime computes the most recent reset timestamp", () => {
+    // Saturday Oct 31 at 7:00 AM UTC (most recent Friday reset was Oct 30 00:05 UTC)
+    const saturday7am = Date.UTC(2026, 9, 31, 7, 0, 0);
+    const prevFriday = new Date(getPreviousUtcResetTime("5", saturday7am));
+    assert.equal(prevFriday.getUTCDay(), 5, "Previous reset was on Friday");
+    assert.equal(prevFriday.getUTCDate(), 30, "Previous reset was Oct 30");
+    assert.equal(prevFriday.getUTCHours(), 0);
+    assert.equal(prevFriday.getUTCMinutes(), 5);
+
+    // Friday Oct 30 at 00:01 AM UTC (before 00:05 UTC -> previous reset was Oct 23 00:05 UTC)
+    const fridayBefore = Date.UTC(2026, 9, 30, 0, 1, 0);
+    const prevPrevFriday = new Date(getPreviousUtcResetTime("5", fridayBefore));
+    assert.equal(prevPrevFriday.getUTCDate(), 23, "Previous reset was Oct 23");
+
+    // Everyday mode: Nov 1 at 7:00 AM UTC -> previous reset was Nov 1 at 00:05 UTC
+    const nov1After = Date.UTC(2026, 10, 1, 7, 0, 0);
+    const prevDaily = new Date(getPreviousUtcResetTime("everyday", nov1After));
+    assert.equal(prevDaily.getUTCDate(), 1);
+    assert.equal(prevDaily.getUTCHours(), 0);
+    assert.equal(prevDaily.getUTCMinutes(), 5);
+});
+
+test("isUtcResetMissed detects missed runs across weekend and late browser startups", () => {
     // Friday Oct 30 at 7:00 AM UTC (missed 00:05 UTC)
     const friday7am = new Date(Date.UTC(2026, 9, 30, 7, 0, 0));
     assert.equal(isUtcResetMissed(friday7am, "5", "2026-10-23"), true, "Missed Friday reset should trigger catch-up");
@@ -209,9 +234,10 @@ test("isUtcResetMissed detects missed runs when opening browser late on reset da
     // Friday Oct 30 at 7:00 AM UTC but already ran today
     assert.equal(isUtcResetMissed(friday7am, "5", "2026-10-30"), false, "Already ran today, do not repeat");
 
-    // Saturday Oct 31 at 7:00 AM UTC (not a reset day)
+    // Saturday Oct 31 at 7:00 AM UTC (user missed Friday, opening browser Saturday morning)
     const saturday7am = new Date(Date.UTC(2026, 9, 31, 7, 0, 0));
-    assert.equal(isUtcResetMissed(saturday7am, "5", "2026-10-23"), false, "Not Friday, should not trigger");
+    assert.equal(isUtcResetMissed(saturday7am, "5", "2026-10-23"), true, "Missed Friday reset caught up on Saturday");
+    assert.equal(isUtcResetMissed(saturday7am, "5", "2026-10-30"), false, "Ran on Friday, do not re-run on Saturday");
 
     // Friday Oct 30 at 00:01 AM UTC (before 00:05 UTC)
     const fridayBefore = new Date(Date.UTC(2026, 9, 30, 0, 1, 0));
@@ -283,6 +309,8 @@ test("validators correctly check settings", () => {
     assert.equal(CONFIG_SETTING_VALIDATORS.autoLeaderboardDiscord(false), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.autoLeaderboardTelegram(true), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.autoLeaderboardTelegram("yes"), false);
+    assert.equal(CONFIG_SETTING_VALIDATORS.lastLeaderboardSentWeekKey("2026-11-20"), true);
+    assert.equal(CONFIG_SETTING_VALIDATORS.lastLeaderboardSentWeekKey(123), false);
     assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals({ "200 Đá Quý": 5 }), true);
     assert.equal(CONFIG_SETTING_VALIDATORS.rewardTotals([1, 2, 3]), false);
 });
@@ -892,6 +920,95 @@ test("Get Token button performs manual account relogin with loading state and cr
     assert.equal(TRANSLATIONS.en.gettingToken, "Logging in...");
     assert.equal(TRANSLATIONS.vi.gettingToken, "Đang đăng nhập...");
 });
+
+// --- 40. extractAllAccountsDraws and hasAccountsWithDrawsLeft ---
+test("extractAllAccountsDraws and hasAccountsWithDrawsLeft detect remaining draws and in-flight operations", () => {
+    // 1. All accounts have 0 draws left -> false
+    const storageAllComplete = {
+        plutomall_account_p1_token: "jwt1",
+        plutomall_account_p1_isValidToken: true,
+        plutomall_account_p1_drawsLeft: 0,
+        lilithstore_account_l1_token: "jwt2",
+        lilithstore_account_l1_isValidToken: true,
+        lilithstore_account_l1_drawsLeft: 0,
+    };
+    const storeAccounts = {
+        plutomall: [{ id: "p1" }],
+        lilithstore: [{ id: "l1" }],
+    };
+    const drawsComplete = extractAllAccountsDraws(storageAllComplete, storeAccounts);
+    assert.equal(drawsComplete.length, 2);
+    assert.equal(hasAccountsWithDrawsLeft(drawsComplete), false, "All accounts with 0 drawsLeft should return false");
+
+    // 2. Account has draws remaining -> true
+    const storageHasDraws = {
+        ...storageAllComplete,
+        lilithstore_account_l1_drawsLeft: 1,
+    };
+    const drawsRemaining = extractAllAccountsDraws(storageHasDraws, storeAccounts);
+    assert.equal(hasAccountsWithDrawsLeft(drawsRemaining), true, "Account with drawsLeft > 0 should return true");
+
+    // 3. Account has isDrawing true -> true
+    const storageDrawing = {
+        ...storageAllComplete,
+        plutomall_account_p1_isDrawing: true,
+    };
+    const drawsDrawing = extractAllAccountsDraws(storageDrawing, storeAccounts);
+    assert.equal(hasAccountsWithDrawsLeft(drawsDrawing), true, "Account with isDrawing=true should return true");
+
+    // 4. Account has valid token but drawsLeft is unchecked (null) -> true
+    const storageUnchecked = {
+        ...storageAllComplete,
+        lilithstore_account_l1_drawsLeft: null,
+    };
+    const drawsUnchecked = extractAllAccountsDraws(storageUnchecked, storeAccounts);
+    assert.equal(hasAccountsWithDrawsLeft(drawsUnchecked), true, "Account with valid token and unchecked drawsLeft should return true");
+
+    // 5. Account with no token (empty/unconfigured profile) -> false
+    const storageNoToken = {
+        plutomall_drawsLeft: null,
+        lilithstore_drawsLeft: null,
+    };
+    const drawsNoToken = extractAllAccountsDraws(storageNoToken, {});
+    assert.equal(hasAccountsWithDrawsLeft(drawsNoToken), false, "Unconfigured profiles with no token should return false");
+
+    // 6. Direct numeric array checks
+    assert.equal(hasAccountsWithDrawsLeft([0, 0, 0]), false);
+    assert.equal(hasAccountsWithDrawsLeft([0, 2, 0]), true);
+    assert.equal(hasAccountsWithDrawsLeft([]), false);
+    assert.equal(hasAccountsWithDrawsLeft(null), false);
+
+    // 7. Verify background.js and popup.js use 'leaderboard.png' for Discord embed attachment
+    const bgJs = fs.readFileSync(path.join(__dirname, "background.js"), "utf8");
+    const popupJs = fs.readFileSync(path.join(__dirname, "popup.js"), "utf8");
+    assert.ok(
+        bgJs.includes('formData.append("files[0]", blob, "leaderboard.png")'),
+        "background.js must attach image as leaderboard.png to match Discord embed image.url"
+    );
+    assert.ok(
+        popupJs.includes('formData.append("files[0]", blob, "leaderboard.png")'),
+        "popup.js must attach image as leaderboard.png to match Discord embed image.url"
+    );
+});
+
+// --- 41. Modern Web Guidance: Manifest V3 async/await invariants ---
+test("source files adhere to Modern Web Guidance: no .then() chains and no chrome.runtime.lastError", () => {
+    const files = ["background.js", "popup.js", "content.js", "relogin.js", "relogin-interceptor.js"];
+    for (const file of files) {
+        const content = fs.readFileSync(path.join(__dirname, file), "utf8");
+        assert.equal(
+            content.includes(".then("),
+            false,
+            `${file} must not use .then() chains; use async/await`
+        );
+        assert.equal(
+            content.includes("chrome.runtime.lastError"),
+            false,
+            `${file} must not use legacy callback chrome.runtime.lastError; use async/await with try/catch`
+        );
+    }
+});
+
 
 
 

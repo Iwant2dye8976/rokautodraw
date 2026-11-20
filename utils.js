@@ -186,6 +186,7 @@ const TRANSLATIONS = {
         webhookImageSent: "Leaderboard image sent to {count} webhook(s)!",
         webhookImageFailed: "Failed to send image: {error}",
         noWebhooksConfigured: "No webhooks configured. Please configure in the Automation tab.",
+        podiumDrawsRemainingError: "Cannot send podium: some accounts still have draws remaining.",
         top3Podium: "Top 3 Podium",
         runnersUp: "Runners-up",
         exportSuccess: "Leaderboard PNG downloaded successfully!",
@@ -617,6 +618,7 @@ const TRANSLATIONS = {
         webhookImageSent: "Đã gửi ảnh bảng xếp hạng đến {count} webhook!",
         webhookImageFailed: "Gửi ảnh thất bại: {error}",
         noWebhooksConfigured: "Chưa cấu hình webhook. Vui lòng cấu hình ở tab Tự động.",
+        podiumDrawsRemainingError: "Không thể gửi bảng xếp hạng: một số tài khoản vẫn còn lượt quay.",
         top3Podium: "Top 3 Vinh Danh",
         runnersUp: "Xếp Hạng Tiếp Theo",
         exportSuccess: "Đã tải xuống ảnh bảng xếp hạng PNG thành công!",
@@ -1233,15 +1235,19 @@ function getTodayUtcDateString(d = new Date()) {
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
 }
 
+function getPreviousUtcResetTime(targetDay = "5", referenceTime = Date.now()) {
+    const nextReset = getNextUtcResetTime(targetDay, referenceTime);
+    const periodMs = (targetDay === "everyday" || targetDay === "daily")
+        ? 24 * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+    return nextReset - periodMs;
+}
+
 function isUtcResetMissed(now, targetDay = "5", lastCheckedDate) {
-    const todayStr = getTodayUtcDateString(now);
-    if (lastCheckedDate === todayStr) return false;
-
-    const isTodayResetDay = targetDay === "everyday" || targetDay === "daily" || now.getUTCDay() === Number(targetDay);
-    if (!isTodayResetDay) return false;
-
-    const targetToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 5, 0, 0);
-    return now.getTime() >= targetToday;
+    const nowTime = now instanceof Date ? now.getTime() : Number(now || Date.now());
+    const lastResetTime = getPreviousUtcResetTime(targetDay, nowTime);
+    const lastResetDateStr = getTodayUtcDateString(new Date(lastResetTime));
+    return !lastCheckedDate || lastCheckedDate < lastResetDateStr;
 }
 
 function normalizeSearchText(str) {
@@ -1468,6 +1474,50 @@ function getInitials(name) {
         .join("") || "?";
 }
 
+function extractAllAccountsDraws(storageData, storeAccounts, storeConfig = STORE_CONFIG) {
+    const results = [];
+    if (!storageData || typeof storageData !== "object") return results;
+    const malls = storeConfig && typeof storeConfig === "object" ? Object.keys(storeConfig) : ["plutomall", "lilithstore"];
+
+    for (const mall of malls) {
+        const accounts = storeAccounts && typeof storeAccounts === "object" ? storeAccounts[mall] : undefined;
+        const profiles = Array.isArray(accounts) && accounts.length > 0 ? accounts : [{ id: undefined }];
+        for (const profile of profiles) {
+            const id = profile?.id;
+            const token = storageData[accountStorageKey(mall, id, "token")] ?? null;
+            const isValidToken = storageData[accountStorageKey(mall, id, "isValidToken")] ?? null;
+            const rawDraws = storageData[accountStorageKey(mall, id, "drawsLeft")];
+            const drawsLeft = Number.isFinite(Number(rawDraws)) && rawDraws !== null && rawDraws !== undefined ? Number(rawDraws) : null;
+            const isDrawing = Boolean(storageData[accountStorageKey(mall, id, "isDrawing")]);
+
+            results.push({
+                mall,
+                accountId: id,
+                token,
+                isValidToken,
+                drawsLeft,
+                isDrawing,
+            });
+        }
+    }
+    return results;
+}
+
+function hasAccountsWithDrawsLeft(accounts) {
+    if (!Array.isArray(accounts) || accounts.length === 0) return false;
+    return accounts.some(acc => {
+        if (!acc) return false;
+        if (typeof acc === "number") return acc > 0;
+        if (acc.isDrawing) return true;
+        const draws = Number(acc.drawsLeft);
+        if (Number.isFinite(draws) && draws > 0) return true;
+        if (acc.token && acc.isValidToken !== false && (acc.drawsLeft === null || acc.drawsLeft === undefined)) {
+            return true;
+        }
+        return false;
+    });
+}
+
 function bytesToBase64(bytes) {
     let binary = "";
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -1576,6 +1626,7 @@ const CONFIG_SETTING_VALIDATORS = {
     autoLeaderboardWebhookEnabled: value => typeof value === "boolean",
     autoLeaderboardDiscord: value => typeof value === "boolean",
     autoLeaderboardTelegram: value => typeof value === "boolean",
+    lastLeaderboardSentWeekKey: value => typeof value === "string",
     rewardTotals: value => Boolean(value && typeof value === "object" && !Array.isArray(value)),
     weeklyStats: value => Boolean(
         value && typeof value === "object" && !Array.isArray(value) &&
@@ -1633,10 +1684,11 @@ if (typeof module !== "undefined") {
         parseJwtPayload, getJwtExp, isJwtExpired, isJwtExpiringSoon, isExpiredTokenResponse, parseWebhookUrls, buildWebhookBody,
         getWebhookPhotoEndpoint, buildDiscordImagePayload,
         getRewardIcons, buildSingleDiscordRewardEmbed, getRoleDrawCount,
-        getNextUtcResetTime, getPreResetReloginTime, getCurrentWeekKey, getTodayUtcDateString, isUtcResetMissed,
+        getNextUtcResetTime, getPreResetReloginTime, getPreviousUtcResetTime, getCurrentWeekKey, getTodayUtcDateString, isUtcResetMissed,
         normalizeSearchText, parseSearchQuery, matchesSearch, toCsv, escapeCsvCell,
         stripStoreAccountsPasswords, hasValidCredentials, mergeRewardTotals, REWARD_POINTS, getRewardPoints,
         filterRolesForDraw, progressReloginQueue, getAlarmSyncPlan, mergeWeeklyStats, getTopCharacterRewards, getRankedCharacterScores, getInitials, encryptJsonWithPassphrase, decryptJsonWithPassphrase,
+        extractAllAccountsDraws, hasAccountsWithDrawsLeft,
         buildExportSettings, CONFIG_SETTING_VALIDATORS, POPUP_TABS, normalizePopupTab,
         SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, normalizeLanguage,
         REWARDS_BY_ID, getRewardNameById, getRewardIdByName, translateRewardName, normalizeTranslatedRewards,

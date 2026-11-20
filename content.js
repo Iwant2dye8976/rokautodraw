@@ -30,14 +30,12 @@
         return;
     }
     const params = Object.fromEntries(new URL(location.href).searchParams.entries());
-    chrome.runtime.sendMessage(
-        { type: "surveyCsrf", csrf: surveyCsrf, params },
-        response => {
-            if (chrome.runtime.lastError) {
-                console.error("[LilithDraw] Could not send survey request:", chrome.runtime.lastError.message);
-            } else if (response?.error) {
-                console.error("[LilithDraw] Survey submission failed:", response.error);
-            }
+    try {
+        const response = await chrome.runtime.sendMessage({ type: "surveyCsrf", csrf: surveyCsrf, params });
+        if (response?.error) {
+            console.error("[LilithDraw] Survey submission failed:", response.error);
         }
-    );
+    } catch (err) {
+        console.error("[LilithDraw] Could not send survey request:", err.message);
+    }
 })();

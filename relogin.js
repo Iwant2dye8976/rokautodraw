@@ -131,18 +131,15 @@ async function waitForLoginResult(passwordPanel, timeoutMs = 6000) {
 
         await delay(200);
     }
-    return { success: true };
+    return { success: false, error: "Login request timed out without confirmation" };
 }
 
-function reportFinished(success, error) {
-    chrome.runtime.sendMessage(
-        { action: "reloginFinished", success, error },
-        () => {
-            if (chrome.runtime.lastError) {
-                console.error("[LilithDraw] Could not report relogin result:", chrome.runtime.lastError.message);
-            }
-        }
-    );
+async function reportFinished(success, error) {
+    try {
+        await chrome.runtime.sendMessage({ action: "reloginFinished", success, error });
+    } catch (err) {
+        console.error("[LilithDraw] Could not report relogin result:", err.message);
+    }
 }
 
 (async () => {
@@ -152,22 +149,19 @@ function reportFinished(success, error) {
 
     let mall;
     try {
-        const credentials = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage(
-                { action: "getReloginCredentials" },
-                response => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                    } else if (response?.error === "Không có phiên tự đăng nhập hợp lệ" || response?.error === "No valid auto-relogin session") {
-                        resolve(null);
-                    } else if (response?.error) {
-                        reject(new Error(response.error));
-                    } else {
-                        resolve(response);
-                    }
-                }
-            );
-        });
+        let credentials;
+        try {
+            const response = await chrome.runtime.sendMessage({ action: "getReloginCredentials" });
+            if (response?.error === "Không có phiên tự đăng nhập hợp lệ" || response?.error === "No valid auto-relogin session") {
+                credentials = null;
+            } else if (response?.error) {
+                throw new Error(response.error);
+            } else {
+                credentials = response;
+            }
+        } catch (err) {
+            throw new Error(err.message);
+        }
 
         if (!credentials) return;
         mall = credentials.mall;
