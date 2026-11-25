@@ -1015,3 +1015,45 @@ test("source files adhere to Modern Web Guidance: no .then() chains and no chrom
 
 
 
+
+// ============================================================================
+// Updater helpers tests
+// ============================================================================
+test("compareVersions compares semver strings with or without v prefix", () => {
+    const { compareVersions } = require("./utils.js");
+    assert.equal(compareVersions("v1.6.9", "1.6.8"), 1);
+    assert.equal(compareVersions("1.6.8", "v1.6.9"), -1);
+    assert.equal(compareVersions("v1.6.8", "1.6.8"), 0);
+    assert.equal(compareVersions("2.0.0", "1.9.99"), 1);
+    assert.equal(compareVersions("1.7", "1.7.0"), 0);
+});
+
+test("parseGitHubRelease extracts normalized release info", () => {
+    const { parseGitHubRelease } = require("./utils.js");
+    const parsed = parseGitHubRelease({
+        tag_name: "v1.7.0",
+        name: "Release 1.7.0",
+        body: "Added updater",
+        html_url: "https://github.com/Iwant2dye8976/rokautodraw/releases/tag/v1.7.0",
+        published_at: "2026-11-26T00:00:00Z",
+    });
+    assert.deepEqual(parsed, {
+        version: "1.7.0",
+        tagName: "v1.7.0",
+        name: "Release 1.7.0",
+        body: "Added updater",
+        htmlUrl: "https://github.com/Iwant2dye8976/rokautodraw/releases/tag/v1.7.0",
+        publishedAt: "2026-11-26T00:00:00Z",
+    });
+    assert.equal(parseGitHubRelease(null), null);
+    assert.equal(parseGitHubRelease({}), null);
+});
+
+test("shouldCheckForUpdates respects cache timestamp and custom interval", () => {
+    const { shouldCheckForUpdates } = require("./utils.js");
+    const now = 1_700_000_000_000;
+    assert.equal(shouldCheckForUpdates(null, 12, now), true);
+    assert.equal(shouldCheckForUpdates(now - 11 * 3600 * 1000, 12, now), false);
+    assert.equal(shouldCheckForUpdates(now - 12 * 3600 * 1000, 12, now), true);
+    assert.equal(shouldCheckForUpdates(now - 5 * 3600 * 1000, 4, now), true);
+});

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ROK Weekly Auto",
-  "version": "1.6.8",
+  "version": "1.6.9",
   "permissions": [
     "storage",
     "tabs",
@@ -20,7 +20,8 @@
     "https://passport.pup.vn/*",
     "https://discord.com/*",
     "https://discordapp.com/*",
-    "https://api.telegram.org/*"
+    "https://api.telegram.org/*",
+    "https://api.github.com/*"
   ],
   "background": {
     "service_worker": "background.js"

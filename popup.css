@@ -3348,3 +3348,78 @@ textarea:focus-visible {
     transform: none !important;
   }
 }
+
+/* Update Banner */
+.update-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(232, 93, 68, 0.35);
+  background: rgba(232, 93, 68, 0.08);
+}
+
+[data-theme="dark"] .update-banner {
+  background: rgba(232, 93, 68, 0.14);
+  border-color: rgba(232, 93, 68, 0.45);
+}
+
+.update-banner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.update-banner-title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.update-banner-body {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  opacity: 0.85;
+  white-space: pre-line;
+  max-height: 64px;
+  overflow-y: auto;
+}
+
+/* Update Section Controls */
+.update-controls-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.update-interval-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-check-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm, 8px);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.update-btn-sm {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.footer-version {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}

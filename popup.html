@@ -110,6 +110,17 @@
   </div>
 
   <main id="main">
+    <!-- Update Available Banner -->
+    <section id="updateBanner" class="update-banner" style="display: none" role="region" aria-live="polite">
+      <div class="update-banner-head">
+        <strong id="updateBannerTitle" class="update-banner-title"></strong>
+        <div class="update-banner-actions">
+          <button type="button" id="updateDownloadBtn" class="btn-primary-outline update-btn-sm" data-i18n="updateDownloadBtn">Download</button>
+          <button type="button" id="updateDismissBtn" class="btn-ghost update-btn-sm" data-i18n="updateDismissBtn">Dismiss</button>
+        </div>
+      </div>
+      <p id="updateBannerBody" class="update-banner-body"></p>
+    </section>
     <!-- TAB 1: DRAW DECK (DEFAULT) -->
     <section class="tab-panel" id="tabPanelDraw" data-tab-panel="draw" role="tabpanel" aria-labelledby="navTabDraw">
       <!-- Hero Draw Strip -->
@@ -583,6 +594,24 @@
         </div>
       </section>
 
+      <!-- Updates Section -->
+      <section class="settings-section" aria-labelledby="updateTitle">
+        <div class="settings-section-head">
+          <h2 class="settings-section-title" id="updateTitle" data-i18n="updateTitle">Updates</h2>
+          <span class="settings-toggle-label" id="currentVersionLabel"></span>
+        </div>
+        <div class="settings-section-content">
+          <div class="update-controls-row">
+            <label class="login-field update-interval-field">
+              <span data-i18n="updateCheckIntervalLabel">Auto-check interval (hours)</span>
+              <input id="updateCheckIntervalHours" type="number" min="1" step="1" inputmode="numeric" />
+            </label>
+            <button type="button" id="checkUpdatesBtn" class="btn-primary-outline update-check-btn" data-i18n="updateCheckBtn">Check for Updates</button>
+          </div>
+          <div class="login-settings-status" id="updateCheckStatus" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
       <!-- Token Section -->
       <section class="settings-section token-section" aria-labelledby="tokenTitle">
         <div class="settings-section-head">
@@ -667,6 +696,7 @@
       <span id="status" data-i18n="noToken">No token</span>
     </div>
     <div class="footer-right">
+      <span class="footer-version" id="footerVersion"></span>
       <button type="button" id="toggleLogBtn" class="footer-log-btn" aria-expanded="false" aria-controls="logWrap"
         title="Toggle activity log" data-i18n-title="toggleLogTitle">
         <span data-i18n="footerLogBtn">Log</span>

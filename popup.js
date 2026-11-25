@@ -3680,3 +3680,127 @@ if (drawAllBtn) {
         }
     });
 }
+
+// ============================================================================
+// Updater UI
+// ============================================================================
+(function initUpdaterUi() {
+    function getLang() {
+        return typeof currentLanguage !== "undefined" ? currentLanguage : DEFAULT_LANGUAGE;
+    }
+
+    function renderUpdateBanner(updateCache, dismissedVersion) {
+        const banner = document.getElementById("updateBanner");
+        if (!banner) return;
+        const currentVersion = chrome.runtime.getManifest().version;
+        const hasUpdate = Boolean(
+            updateCache?.version &&
+            compareVersions(updateCache.version, currentVersion) > 0 &&
+            updateCache.version !== dismissedVersion
+        );
+        if (!hasUpdate) {
+            banner.style.display = "none";
+            return;
+        }
+        const titleEl = document.getElementById("updateBannerTitle");
+        const bodyEl = document.getElementById("updateBannerBody");
+        if (titleEl) {
+            titleEl.textContent = t("updateAvailableTitle", { version: updateCache.version }, getLang());
+        }
+        if (bodyEl) {
+            const notes = (updateCache.body || "").trim();
+            bodyEl.textContent = notes.length > 220 ? `${notes.slice(0, 220)}…` : notes;
+            bodyEl.style.display = notes ? "block" : "none";
+        }
+        banner.dataset.htmlUrl = updateCache.htmlUrl || "";
+        banner.dataset.version = updateCache.version;
+        banner.style.display = "block";
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+        const currentVersion = chrome.runtime.getManifest().version;
+        const versionLabel = document.getElementById("currentVersionLabel");
+        if (versionLabel) {
+            versionLabel.textContent = `v${currentVersion}`;
+        }
+        const footerVersion = document.getElementById("footerVersion");
+        if (footerVersion) {
+            footerVersion.textContent = `v${currentVersion}`;
+        }
+
+        const intervalInput = document.getElementById("updateCheckIntervalHours");
+        const checkBtn = document.getElementById("checkUpdatesBtn");
+        const statusEl = document.getElementById("updateCheckStatus");
+        const downloadBtn = document.getElementById("updateDownloadBtn");
+        const dismissBtn = document.getElementById("updateDismissBtn");
+        const banner = document.getElementById("updateBanner");
+
+        const stored = await chrome.storage.local.get([
+            "updateCache",
+            "dismissedUpdateVersion",
+            "updateCheckIntervalHours",
+        ]);
+
+        if (intervalInput) {
+            const hours = Number(stored.updateCheckIntervalHours);
+            intervalInput.value = Number.isFinite(hours) && hours >= 1 ? hours : DEFAULT_UPDATE_CHECK_INTERVAL_HOURS;
+            intervalInput.addEventListener("change", async () => {
+                const val = Number.parseInt(intervalInput.value, 10);
+                const normalized = Number.isFinite(val) && val >= 1 ? val : DEFAULT_UPDATE_CHECK_INTERVAL_HOURS;
+                intervalInput.value = normalized;
+                await chrome.storage.local.set({ updateCheckIntervalHours: normalized });
+            });
+        }
+
+        renderUpdateBanner(stored.updateCache, stored.dismissedUpdateVersion);
+
+        if (downloadBtn) {
+            downloadBtn.addEventListener("click", () => {
+                const url = banner?.dataset.htmlUrl || "https://github.com/Iwant2dye8976/rokautodraw/releases/latest";
+                chrome.tabs.create({ url });
+            });
+        }
+
+        if (dismissBtn) {
+            dismissBtn.addEventListener("click", async () => {
+                const version = banner?.dataset.version;
+                if (version) {
+                    await chrome.storage.local.set({ dismissedUpdateVersion: version });
+                }
+                if (banner) banner.style.display = "none";
+            });
+        }
+
+        if (checkBtn) {
+            checkBtn.addEventListener("click", async () => {
+                checkBtn.disabled = true;
+                if (statusEl) statusEl.textContent = t("updateChecking", {}, getLang());
+                try {
+                    const res = await chrome.runtime.sendMessage({ action: "checkForUpdates", force: true });
+                    if (!res?.ok) {
+                        throw new Error(res?.error || "Unknown error");
+                    }
+                    const latest = await chrome.storage.local.get(["updateCache", "dismissedUpdateVersion"]);
+                    // Manual check clears dismissal if user explicitly checks
+                    if (res.hasUpdate && latest.dismissedUpdateVersion === res.release?.version) {
+                        await chrome.storage.local.remove("dismissedUpdateVersion");
+                        renderUpdateBanner(res.release, null);
+                    } else {
+                        renderUpdateBanner(res.release, latest.dismissedUpdateVersion);
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = res.hasUpdate
+                            ? t("updateAvailableStatus", { version: res.release.version }, getLang())
+                            : t("updateUpToDate", { version: res.currentVersion }, getLang());
+                    }
+                } catch (err) {
+                    if (statusEl) {
+                        statusEl.textContent = t("updateCheckFailed", { error: err?.message || String(err) }, getLang());
+                    }
+                } finally {
+                    checkBtn.disabled = false;
+                }
+            });
+        }
+    });
+})();

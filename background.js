@@ -1154,7 +1154,53 @@ async function syncAutoCheckAlarms() {
     }
 }
 
+async function checkForUpdates(force = false) {
+    const currentVersion = chrome.runtime.getManifest().version;
+    const { updateCache, updateCheckIntervalHours } = await chrome.storage.local.get([
+        "updateCache",
+        "updateCheckIntervalHours",
+    ]);
+
+    if (!force && !shouldCheckForUpdates(updateCache?.checkedAt, updateCheckIntervalHours)) {
+        const hasUpdate = Boolean(
+            updateCache?.version && compareVersions(updateCache.version, currentVersion) > 0
+        );
+        return { ok: true, cached: true, hasUpdate, currentVersion, release: updateCache || null };
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    try {
+        const res = await fetch(GITHUB_RELEASE_API_URL, {
+            headers: { Accept: "application/vnd.github+json" },
+            signal: controller.signal,
+        });
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const release = parseGitHubRelease(data);
+        if (!release) {
+            throw new Error("Invalid release payload");
+        }
+        const cacheEntry = {
+            version: release.version,
+            body: release.body,
+            htmlUrl: release.htmlUrl,
+            checkedAt: Date.now(),
+        };
+        await chrome.storage.local.set({ updateCache: cacheEntry });
+        const hasUpdate = compareVersions(release.version, currentVersion) > 0;
+        return { ok: true, cached: false, hasUpdate, currentVersion, release: cacheEntry };
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 chrome.runtime.onStartup.addListener(() => {
+    void checkForUpdates(false).catch(error => {
+        console.warn("[LilithDraw] Startup update check failed:", error);
+    });
     void (async () => {
         await syncAutoCheckAlarms();
         const data = await chrome.storage.local.get(["autoCheckEnabled", "autoCheckMode"]);
@@ -2041,6 +2087,18 @@ async function autoSurvey(csrf, params) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || typeof msg !== "object") return false;
+
+    if (msg.action === "checkForUpdates") {
+        (async () => {
+            try {
+                const result = await checkForUpdates(Boolean(msg.force));
+                sendResponse(result);
+            } catch (err) {
+                sendResponse({ ok: false, error: err?.message || String(err) });
+            }
+        })();
+        return true;
+    }
 
     if (msg.action === "accountSwitchReady") {
         (async () => {

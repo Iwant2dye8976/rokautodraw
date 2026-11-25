@@ -500,6 +500,19 @@ const TRANSLATIONS = {
         confirmClearRewardsTitle: "Clear Draw History",
         modalCancelBtn: "Cancel",
         modalDeleteBtn: "Delete",
+
+        // Updater
+        updateAvailableTitle: "Update available: v{version}",
+        updateDownloadBtn: "Download",
+        updateDismissBtn: "Dismiss",
+        updateTitle: "Updates",
+        updateCurrentVersion: "Current version: v{version}",
+        updateCheckIntervalLabel: "Auto-check interval (hours)",
+        updateCheckBtn: "Check for Updates",
+        updateChecking: "Checking for updates...",
+        updateUpToDate: "You are on the latest version (v{version}).",
+        updateAvailableStatus: "New version v{version} is available!",
+        updateCheckFailed: "Update check failed: {error}",
     },
     vi: {
         // Header & Navigation
@@ -932,6 +945,19 @@ const TRANSLATIONS = {
         confirmClearRewardsTitle: "Xóa lịch sử quay thưởng",
         modalCancelBtn: "Hủy",
         modalDeleteBtn: "Xóa",
+
+        // Updater
+        updateAvailableTitle: "Có bản cập nhật mới: v{version}",
+        updateDownloadBtn: "Tải xuống",
+        updateDismissBtn: "Bỏ qua",
+        updateTitle: "Cập nhật",
+        updateCurrentVersion: "Phiên bản hiện tại: v{version}",
+        updateCheckIntervalLabel: "Chu kỳ tự động kiểm tra (giờ)",
+        updateCheckBtn: "Kiểm tra cập nhật",
+        updateChecking: "Đang kiểm tra cập nhật...",
+        updateUpToDate: "Bạn đang dùng phiên bản mới nhất (v{version}).",
+        updateAvailableStatus: "Đã có phiên bản mới v{version}!",
+        updateCheckFailed: "Kiểm tra cập nhật thất bại: {error}",
     },
 };
 
@@ -1678,6 +1704,68 @@ function normalizePopupTab(tab) {
     return POPUP_TABS.includes(tab) ? tab : "draw";
 }
 
+const GITHUB_RELEASE_API_URL = "https://api.github.com/repos/Iwant2dye8976/rokautodraw/releases/latest";
+const DEFAULT_UPDATE_CHECK_INTERVAL_HOURS = 12;
+
+function normalizeVersionParts(version) {
+    if (typeof version !== "string") return [];
+    const cleaned = version.trim().replace(/^v/i, "").split("-")[0];
+    if (!cleaned) return [];
+    return cleaned.split(".").map(part => {
+        const num = Number.parseInt(part, 10);
+        return Number.isFinite(num) && num >= 0 ? num : 0;
+    });
+}
+
+/**
+ * Compare two semver-like version strings (e.g. "v1.6.9" vs "1.6.8").
+ * Returns 1 if a > b, -1 if a < b, 0 if equal.
+ */
+function compareVersions(a, b) {
+    const partsA = normalizeVersionParts(a);
+    const partsB = normalizeVersionParts(b);
+    const len = Math.max(partsA.length, partsB.length);
+    for (let i = 0; i < len; i++) {
+        const numA = partsA[i] ?? 0;
+        const numB = partsB[i] ?? 0;
+        if (numA > numB) return 1;
+        if (numA < numB) return -1;
+    }
+    return 0;
+}
+
+/**
+ * Parse a GitHub Releases API response into a normalized release object.
+ */
+function parseGitHubRelease(data) {
+    if (!data || typeof data !== "object" || typeof data.tag_name !== "string") {
+        return null;
+    }
+    const version = data.tag_name.trim().replace(/^v/i, "");
+    if (!version) return null;
+    return {
+        version,
+        tagName: data.tag_name.trim(),
+        name: typeof data.name === "string" ? data.name.trim() : data.tag_name.trim(),
+        body: typeof data.body === "string" ? data.body.trim() : "",
+        htmlUrl: typeof data.html_url === "string" ? data.html_url : "",
+        publishedAt: typeof data.published_at === "string" ? data.published_at : "",
+    };
+}
+
+/**
+ * Determine whether an automatic update check should run based on cache timestamp and interval.
+ */
+function shouldCheckForUpdates(lastCheckedAt, intervalHours = DEFAULT_UPDATE_CHECK_INTERVAL_HOURS, now = Date.now()) {
+    const hours = Number.isFinite(Number(intervalHours)) && Number(intervalHours) >= 1
+        ? Number(intervalHours)
+        : DEFAULT_UPDATE_CHECK_INTERVAL_HOURS;
+    if (!Number.isFinite(Number(lastCheckedAt)) || Number(lastCheckedAt) <= 0) {
+        return true;
+    }
+    return now - Number(lastCheckedAt) >= hours * 3600 * 1000;
+}
+
 if (typeof module !== "undefined") {
     module.exports = {
         STORE_CONFIG, STORE_NAMES, isReloginStoreUrl, accountStorageKey,
@@ -1693,5 +1781,7 @@ if (typeof module !== "undefined") {
         SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, normalizeLanguage,
         REWARDS_BY_ID, getRewardNameById, getRewardIdByName, translateRewardName, normalizeTranslatedRewards,
         TRANSLATIONS, t,
+        GITHUB_RELEASE_API_URL, DEFAULT_UPDATE_CHECK_INTERVAL_HOURS,
+        compareVersions, parseGitHubRelease, shouldCheckForUpdates,
     };
 }
